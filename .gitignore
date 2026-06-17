@@ -1,0 +1,9 @@
+node_modules/
+backend/dev.db
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+backend/.env
+OpenWA/data/
+OpenWA/node_modules/
+*.log
+.DS_Store

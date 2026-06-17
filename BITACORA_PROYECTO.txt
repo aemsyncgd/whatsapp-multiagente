@@ -1,0 +1,219 @@
+=========================================================================
+BITÁCORA DEL PROYECTO - SISTEMA MULTIAGENTE WHATSAPP
+=========================================================================
+Fecha: 17/06/2026
+Autor: Arquitecto de Software (opencode)
+
+=========================================================================
+1. OBJETIVO DEL PROYECTO
+=========================================================================
+Sistema web privado y auto-alojado "Multiagente de WhatsApp" para
+coordinar soporte técnico interno en campo. 4 operadores humanos
+gestionan conversaciones con técnicos en calle de forma simultánea.
+
+=========================================================================
+2. ESTRUCTURA DEL PROYECTO
+=========================================================================
+whatsappumsr/
+├── docker-compose.yml          # OpenWA gateway (puerto 8080)
+├── backend/
+│   ├── .env                    # Config: puerto, tokens, BD
+│   ├── package.json            # Dependencias Node.js
+│   ├── prisma/
+│   │   ├── schema.prisma       # Modelos: User, Chat, Message
+│   │   └── seed.js             # Crea 4 operadores por defecto
+│   └── src/
+│       ├── server.js           # Express + Socket.io + Webhook
+│       ├── config.js           # Carga de variables de entorno
+│       ├── middleware/auth.js   # JWT (login, verify)
+│       ├── routes/api.js       # Endpoints REST
+│       └── services/
+│           ├── chat.js         # Lógica de negocio (asignar, liberar, mensajes)
+│           ├── openwa.js       # Cliente API de OpenWA
+│           └── socket.js       # Eventos WebSocket
+├── frontend/
+│   ├── index.html              # SPA 3 columnas (Tailwind CSS)
+│   └── js/
+│       ├── store.js            # Estado reactivo Pub/Sub
+│       ├── api.js              # Cliente HTTP con JWT
+│       ├── socket.js           # Cliente Socket.io con reconexión
+│       └── app.js              # UI y lógica de componentes
+└── OpenWA/                     # Clonado de github.com/rmyndharis/OpenWA
+
+=========================================================================
+3. TECNOLOGÍAS UTILIZADAS
+=========================================================================
+- Gateway: OpenWA (rmyndharis/OpenWA) en Podman
+- Backend: Node.js + Express + Socket.io
+- BD: SQLite con Prisma ORM
+- Frontend: HTML5 + Tailwind CSS + Vanilla JS (ES Modules)
+- Auth: JWT (jsonwebtoken + bcryptjs)
+- Tiempo real: Socket.io (WebSockets)
+- Contenedores: Podman + podman-compose
+
+=========================================================================
+4. ESTADO DE LOS COMPONENTES (17/06/2026)
+=========================================================================
+
+COMPONENTE          ESTADO       PUERTO     DETALLE
+────────────────────────────────────────────────────────────
+OpenWA API          ✅ Activo     :8002     Build local desde Dockerfile (mapeado a 2785)
+OpenWA Dashboard    ✅ Activo     :2886     UI de gestión de sesiones
+Backend Multiagente ✅ Activo     :5000     Express + Socket.io + Webhook
+Frontend SPA        ✅ Sirviendo  :5000/    Sirve index.html como estático
+Webhook             ✅ Configurado          apunta a http://10.89.1.1:3000/webhook/message
+Base de Datos       ✅ Creada     SQLite    backend/prisma/dev.db
+Usuarios seed       ✅ Cargados            carlos, maria, juan, ana (pass: operador123)
+
+=========================================================================
+5. CREDENCIALES Y CONFIGURACIÓN
+=========================================================================
+API Key OpenWA:     owa_k1_75ee5d45e9b6f2830b5a0b9fcdc4110989b5e72059feeb2f76c22681347a22ad
+Webhook Secret:     webhook_secret_123
+JWT Secret:         cambiar_esto_por_un_secreto_seguro_en_produccion
+Operadores:         carlos, maria, juan, ana / operador123
+Sesión WhatsApp:    93e576c1-c233-4a53-915f-5146e1ef47c9 — "mi-whatsapp"
+Engine:             whatsapp-web.js@1.34.7 con Chromium 149
+
+Variables en backend/.env:
+  OPENWA_API_URL=http://localhost:8002
+  OPENWA_TOKEN=owa_k1_75ee5d45e9b6f2830b5a0b9fcdc4110989b5e72059feeb2f76c22681347a22ad
+  OPENWA_SESSION_ID= [pendiente]
+
+=========================================================================
+6. LO QUE FUNCIONA CORRECTAMENTE
+=========================================================================
+✅ Login de operadores (JWT)
+✅ API REST protegida con token
+✅ WebSockets en tiempo real (Socket.io)
+✅ Frontend SPA con 3 columnas (sidebar, lista, ventana)
+✅ Pestañas: Mis Chats, Bandeja General, Grupos, Historial
+✅ Asignar/Liberar chat
+✅ Envío de mensajes con etiqueta [Enviado por: Operador]
+✅ Webhook receptor en /webhook/message
+✅ Reconexión automática de WebSockets
+✅ Contador de chats sin asignar en tiempo real
+✅ Conexión con OpenWA vía API (health check responde)
+
+=========================================================================
+7. PROBLEMA ACTUAL (PENDIENTE DE RESOLVER)
+=========================================================================
+TÍTULO: Sesión de WhatsApp se queda en estado "authenticating"
+         y no completa la conexión.
+
+SÍNTOMAS:
+- QR se genera correctamente en el Dashboard de OpenWA
+- Usuario escanea el QR desde WhatsApp (teléfono)
+- Estado pasa a "authenticating" pero nunca a "connected"
+- No hay errores visibles en logs de OpenWA
+- whatsapp-web.js 1.34.7 intenta auto-negociar versión de WhatsApp Web
+  y falla silenciosamente
+
+CAUSA PROBABLE:
+Incompatibilidad entre whatsapp-web.js 1.34.7 y la versión actual
+del servidor de WhatsApp. El auto-negotiation selecciona una versión
+de WhatsApp Web que ya no es soportada por los servidores de Meta.
+
+SOLUCIONES POSIBLES (en orden de probabilidad):
+
+OPCIÓN A (Recomendada) - Fijar versión de WhatsApp Web:
+  1. Editar OpenWA/docker-compose.dev.yml
+  2. Agregar en environment del servicio openwa:
+       - WWEBJS_WEB_VERSION=2.3000.1017314725
+  3. Reconstruir: podman-compose -f docker-compose.dev.yml down
+     y luego: podman-compose -f docker-compose.dev.yml up -d --build
+  4. Crear nueva sesión y escanear QR
+  5. Si falla, probar versiones alternativas:
+     - 2.2412.54
+     - 2.3000.1015901306
+     - 2.3000.1015944858
+
+OPCIÓN B - Actualizar whatsapp-web.js en el contenedor:
+  - whatsapp-web.js 1.37.x tiene correcciones de autenticación
+  - Editar package.json de OpenWA y fijar "@open-wa/wa-automate": "^1.37.0"
+  - Reconstruir imagen
+
+OPCIÓN C - Cambiar engine a Baileys:
+  - Agregar en environment: ENGINE_TYPE=baileys
+  - Baileys es más estable y no necesita Chromium
+  - Reconstruir y probar
+
+OPCIÓN D - Probar en otro teléfono/dispositivo:
+  - Probar con otro teléfono Android o iOS actualizado
+  - Verificar que WhatsApp esté en última versión desde la tienda
+
+OPCIÓN E - Usar un proxy:
+  - Configurar proxy para whatsapp-web.js si hay restricciones de red
+  - Agregar en environment:
+      - PROXY_HOST=...
+      - PROXY_PORT=...
+
+=========================================================================
+8. APIs DE OPENWA DOCUMENTADAS
+=========================================================================
+Health:             GET  /api/health/ready
+Crear Sesión:       POST /api/sessions         {"name": "mi-sesion"}
+Iniciar Sesión:     POST /api/sessions/{id}/start
+Obtener QR:         GET  /api/sessions/{id}/qr
+Estado Sesión:      GET  /api/sessions/{id}
+Detener Sesión:     POST /api/sessions/{id}/stop
+Eliminar Sesión:    DELETE /api/sessions/{id}
+Enviar Texto:       POST /api/sessions/{id}/messages/send-text
+                    {"chatId": "52123@c.us", "text": "Hola"}
+Webhooks:           POST /api/sessions/{id}/webhooks
+                    {"url": "...", "events": ["message.received"]}
+Historial Chat:     GET  /api/sessions/{id}/messages/{chatId}/history
+Auth:               Header: X-API-Key
+
+=========================================================================
+9. FLUJO DE DATOS ESPERADO
+=========================================================================
+WhatsApp Phone
+    ↓ (mensaje entrante)
+OpenWA Gateway (puerto 2785)
+    ↓ (webhook HTTP POST)
+Backend /webhook/message (puerto 3000)
+    ↓ (guarda en BD + emite WebSocket)
+Frontend (todos los operadores conectados)
+    ↓ (operador escribe respuesta)
+Backend API /api/chats/:id/send
+    ↓ (guarda en BD + POST a OpenWA)
+OpenWA API /api/sessions/{id}/messages/send-text
+    ↓ (envía a WhatsApp)
+WhatsApp Phone del técnico
+
+=========================================================================
+10. COMANDOS ÚTILES
+=========================================================================
+# Iniciar backend multiagente:
+  cd ~/Escritorio/whatsappumsr/backend && npm start
+
+# Iniciar OpenWA:
+  cd ~/Escritorio/whatsappumsr/OpenWA
+  podman-compose -f docker-compose.dev.yml up -d --build
+
+# Ver logs de OpenWA:
+  podman logs -f openwa-api
+
+# Simular mensaje entrante (prueba sin WhatsApp):
+  curl -X POST http://localhost:5000/webhook/message \
+    -H "Content-Type: application/json" \
+    -d '{"event":"onMessage","data":{"chatId":"521234567890@c.us","sender":{"name":"Luis Técnico"},"body":"Necesito soporte"}}'
+
+# Verificar conexión OpenWA desde backend:
+  curl -s http://localhost:5000/api/openwa/status \
+    -H "Authorization: Bearer $(TOKEN)"
+
+# Login de prueba:
+  curl -s -X POST http://localhost:5000/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"carlos","password":"operador123"}'
+
+# Enlaces:
+  Frontend:  http://localhost:5000
+  OpenWA:    http://localhost:8002 (API) / http://localhost:2886 (Dashboard)
+  Swagger:   http://localhost:8002/api/docs
+
+=========================================================================
+fin de la bitácora
+=========================================================================

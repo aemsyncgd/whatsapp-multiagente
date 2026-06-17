@@ -1,0 +1,34 @@
+services:
+  openwa:
+    build:
+      context: ./OpenWA
+      dockerfile: Dockerfile
+    container_name: openwa-gateway
+    restart: unless-stopped
+    ports:
+      - "8002:2785"
+    volumes:
+      - openwa_data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=2785
+      - DATABASE_TYPE=sqlite
+      - DATABASE_NAME=/app/data/openwa.sqlite
+      - DATABASE_SYNCHRONIZE=true
+      - ENGINE_TYPE=whatsapp-web.js
+      - SESSION_DATA_PATH=/app/data/sessions
+      - PUPPETEER_HEADLESS=true
+      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
+      - STORAGE_TYPE=local
+      - STORAGE_LOCAL_PATH=/app/data/media
+      - WEBHOOK_TIMEOUT=10000
+      - WEBHOOK_MAX_RETRIES=3
+      - WEBHOOK_SSRF_PROTECT=false
+      - WEBHOOK_URL=http://host.docker.internal:5000/webhook/message
+      - WEBHOOK_EVENTS=onMessage,onQrCode,onConnected,onDisconnected
+      - TZ=America/Caracas
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  openwa_data:

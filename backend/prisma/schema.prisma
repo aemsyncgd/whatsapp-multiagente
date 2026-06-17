@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  displayName  String
+  role         String    @default("operator")
+  isOnline     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  assignedChats Chat[]
+  messages      Message[]
+}
+
+model Chat {
+  id             Int       @id @default(autoincrement())
+  whatsappId     String    @unique
+  name           String
+  type           String    @default("direct")
+  status         String    @default("unassigned")
+  assignedTo     Int?
+  lastMessage    String?
+  lastMessageAt  DateTime?
+  unreadCount    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  assignedToUser User?     @relation(fields: [assignedTo], references: [id])
+  messages       Message[]
+}
+
+model Message {
+  id               Int      @id @default(autoincrement())
+  chatId           Int
+  senderWhatsappId String   @default("")
+  senderName       String   @default("")
+  body             String
+  timestamp        DateTime @default(now())
+  agentId          Int?
+  messageType      String   @default("text")
+  isFromAgent      Boolean  @default(false)
+
+  chat   Chat  @relation(fields: [chatId], references: [id])
+  agent  User? @relation(fields: [agentId], references: [id])
+}
