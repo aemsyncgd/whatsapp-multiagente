@@ -55,36 +55,30 @@ Sistema **multiagente auto-alojado** que elimina la necesidad de un teléfono f�
 ## 🏗 Arquitectura
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        INTERNET                                 │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────────────────────────┐
-│  📱 WhatsApp (Teléfono del técnico en campo)                    │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │ Mensajes entrantes/salientes
-┌──────────────────▼──────────────────────────────────────────────┐
-│  🐳 OpenWA Gateway (Puerto 8002)                                │
-│  · whatsapp-web.js engine                                       │
-│  · Envía webhook al backend                                     │
-│  · Recibe comandos API para enviar mensajes                     │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │ Webhook HTTP
-┌──────────────────▼──────────────────────────────────────────────┐
-│  ⚙️ Backend Node.js (Puerto 5000)                               │
-│  · Express + Socket.io                                          │
-│  · Prisma ORM (SQLite)                                          │
-│  · JWT Auth                                                     │
-│  · Lógica de asignación de chats                                │
-└──────┬─────────────────────────────────────┬────────────────────┘
-       │ WebSocket (Socket.io)               │ REST API
-       │                                     │
-┌──────▼──────────┐  ┌───────────────────────▼───────────────────┐
-│  🖥️ Frontend     │  │  Clientes externos                       │
-│  · SPA Tailwind  │  │  · curl / Postman / scripts              │
-│  · 3 columnas    │  └───────────────────────────────────────────┘
-│  · Tiempo real   │
-└──────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     RED DOCKER: whatsapp-net                      │
+│                                                                  │
+│  📱 WhatsApp (Teléfono del técnico)                              │
+│      ↓                                                    ↑      │
+│  ┌──────────────────┐  webhook   ┌────────────────────┐  │      │
+│  │  openwa-api:2785 │───────────▶│ backend:5000       │──┤      │
+│  │  · QR + Engine   │            │ · Express           │  │      │
+│  │  · Sesiones      │◀─◀─ API ──│ · Socket.io         │  │      │
+│  │  · Webhooks      │  send-text│ · Prisma (SQLite)   │  │      │
+│  └──────────────────┘            └─────────┬──────────┘  │      │
+│                                            │ WS          │      │
+│                            ┌───────────────▼────────┐     │      │
+│                            │  Navegador Web         │     │      │
+│                            │  localhost:5000        │─────┘      │
+│                            │  Frontend SPA          │            │
+│                            └────────────────────────┘            │
+│                                                                  │
+│  ┌──────────────────────┐                                        │
+│  │ openwa-dashboard:80  │                                        │
+│  │ localhost:2886       │                                        │
+│  └──────────────────────┘                                        │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -123,46 +117,59 @@ git clone https://github.com/aemsyncgd/whatsapp-multiagente.git
 cd whatsapp-multiagente
 ```
 
-### 2️⃣ Configurar variables de entorno
+### 2️⃣ Clonar OpenWA (si no está presente)
 
 ```bash
-cp backend/.env backend/.env.local
-# Editar backend/.env con tus valores
-```
-
-### 3️⃣ Inicializar base de datos
-
-```bash
-cd backend
-npm install
-npx prisma generate
-npx prisma migrate dev --name init
-node prisma/seed.js
-```
-
-### 4️⃣ Levantar OpenWA (Gateway WhatsApp)
-
-```bash
-# Clonar OpenWA si no está presente
 git clone https://github.com/rmyndharis/OpenWA.git
-
-# Iniciar contenedor
-cd OpenWA
-podman-compose -f docker-compose.dev.yml up -d --build
 ```
 
-### 5️⃣ Iniciar el backend
+### 3️⃣ ¡Levantar todo con un solo comando!
 
 ```bash
-cd backend
-npm start
+podman-compose up -d --build
 ```
 
-### 6️⃣ Abrir el frontend
+Este comando construye y arranca **los 3 servicios** simultáneamente:
+
+| Servicio | Puertos | Descripción |
+|---|---|---|
+| `openwa-api` | `localhost:8002` | Gateway WhatsApp (API + engine) |
+| `openwa-dashboard` | `localhost:2886` | UI web para gestionar sesiones |
+| `whatsapp-backend` | `localhost:5000` | API REST + WebSocket + Frontend SPA |
+
+### 4️⃣ Vincular WhatsApp
+
+1. Abrir Dashboard → `http://localhost:2886`
+2. Autenticar con la API Key:
+   ```bash
+   podman exec openwa-api cat /app/data/.api-key
+   ```
+3. Ir a **Sessions** → **Create Session** → nombre: `mi-whatsapp`
+4. Click **Start** → escanear QR con tu WhatsApp
+5. Copiar el Session ID y configurarlo en el backend:
+   ```bash
+   # Obtener el ID de la sesión
+   curl http://localhost:8002/api/sessions -H "X-API-Key: $(podman exec openwa-api cat /app/data/.api-key)"
+   
+   # Configurarlo en el backend (requiere reinicio del contenedor)
+   podman stop whatsapp-backend
+   podman rm whatsapp-backend
+   # Editar OPENWA_SESSION_ID en docker-compose.yml
+   podman-compose up -d --build backend
+   ```
+
+### 5️⃣ Abrir la aplicación
 
 ```
 http://localhost:5000
 ```
+
+| Usuario | Contraseña |
+|---|---|
+| `carlos` | `operador123` |
+| `maria` | `operador123` |
+| `juan` | `operador123` |
+| `ana` | `operador123` |
 
 ---
 
@@ -328,28 +335,23 @@ curl -X POST http://localhost:5000/webhook/message \
 | Error "authenticating" permanente | whatsapp-web.js desactualizado | Actualizar a ≥ 1.37 o usar engine Baileys |
 | QR no se muestra | Chromium no arranca | Verificar PUPPETEER_ARGS y memoria |
 
-**Solución recomendada:** Editar `OpenWA/docker-compose.dev.yml` y agregar:
+**Solución recomendada:** Editar `docker-compose.yml` y cambiar la variable `WWEBJS_WEB_VERSION` por una versión compatible. Ya viene preconfigurada con `2.3000.1017314725`, pero si falla, prueba con:
 
 ```yaml
-environment:
-  - WWEBJS_WEB_VERSION=2.3000.1017314725
-  # O alternativamente, cambiar el engine
-  # - ENGINE_TYPE=baileys
+- WWEBJS_WEB_VERSION=2.3000.1015901306
 ```
 
 Luego reconstruir:
 
 ```bash
-cd OpenWA
-podman-compose -f docker-compose.dev.yml down
-podman-compose -f docker-compose.dev.yml up -d --build
+podman-compose up -d --build openwa-api
 ```
 
 ### 🔴 El webhook no recibe mensajes
 
 ```bash
-# Verificar que OpenWA puede alcanzar el backend
-podman exec openwa-api sh -c "curl -s http://10.89.1.1:5000/health || echo 'No reachable'"
+# Verificar que OpenWA puede alcanzar el backend (dentro de Docker)
+podman exec openwa-api sh -c "curl -s http://backend:5000/ || echo 'No reachable'"
 
 # Revisar logs
 podman logs openwa-api 2>&1 | grep -i webhook
@@ -380,12 +382,14 @@ node prisma/seed.js
 
 ```
 whatsapp-multiagente/
-├── docker-compose.yml           # Orquestación OpenWA
+├── docker-compose.yml           # 🐳 ORQUESTACIÓN ÚNICA (3 servicios)
 ├── BITACORA_PROYECTO.txt        # Bitácora completa del proyecto
 ├── .gitignore
 │
 ├── backend/
-│   ├── .env                     # Variables de entorno
+│   ├── Dockerfile               # Imagen Docker del backend
+│   ├── docker-entrypoint.sh     # Script de arranque
+│   ├── .env.example             # Variables de entorno (ejemplo)
 │   ├── package.json             # Dependencias
 │   ├── prisma/
 │   │   ├── schema.prisma        # Modelos: User, Chat, Message
@@ -411,8 +415,10 @@ whatsapp-multiagente/
 │       ├── socket.js            # Cliente WebSocket
 │       └── app.js              # UI y lógica
 │
-└── OpenWA/                      # Clon de github.com/rmyndharis/OpenWA
-    └── docker-compose.dev.yml   # Config OpenWA para desarrollo
+├── OpenWA/                      # ⚡ Clon de github.com/rmyndharis/OpenWA
+│   ├── Dockerfile
+│   ├── docker-compose.dev.yml
+│   └── dashboard/               # Frontend React del Dashboard
 ```
 
 ---

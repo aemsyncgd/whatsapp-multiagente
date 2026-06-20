@@ -15,13 +15,16 @@ gestionan conversaciones con técnicos en calle de forma simultánea.
 2. ESTRUCTURA DEL PROYECTO
 =========================================================================
 whatsappumsr/
-├── docker-compose.yml          # OpenWA gateway (puerto 8080)
+├── docker-compose.yml          # ORQUESTACIÓN ÚNICA (3 servicios)
 ├── backend/
+│   ├── Dockerfile              # Imagen del backend para Docker
+│   ├── docker-entrypoint.sh    # Script de arranque (migrate + seed)
 │   ├── .env                    # Config: puerto, tokens, BD
 │   ├── package.json            # Dependencias Node.js
 │   ├── prisma/
 │   │   ├── schema.prisma       # Modelos: User, Chat, Message
-│   │   └── seed.js             # Crea 4 operadores por defecto
+│   │   ├── seed.js             # Crea 4 operadores por defecto
+│   │   └── migrations/         # Migraciones SQLite
 │   └── src/
 │       ├── server.js           # Express + Socket.io + Webhook
 │       ├── config.js           # Carga de variables de entorno
@@ -36,9 +39,11 @@ whatsappumsr/
 │   └── js/
 │       ├── store.js            # Estado reactivo Pub/Sub
 │       ├── api.js              # Cliente HTTP con JWT
-│       ├── socket.js           # Cliente Socket.io con reconexión
+│       ├── socket.js           # Cliente WebSocket con reconexión
 │       └── app.js              # UI y lógica de componentes
-└── OpenWA/                     # Clonado de github.com/rmyndharis/OpenWA
+├── OpenWA/                     # Clonado de github.com/rmyndharis/OpenWA
+│   └── dashboard/              # Frontend React del Dashboard OpenWA
+└── README.md                   # Documentación principal
 
 =========================================================================
 3. TECNOLOGÍAS UTILIZADAS
@@ -57,13 +62,14 @@ whatsappumsr/
 
 COMPONENTE          ESTADO       PUERTO     DETALLE
 ────────────────────────────────────────────────────────────
-OpenWA API          ✅ Activo     :8002     Build local desde Dockerfile (mapeado a 2785)
-OpenWA Dashboard    ✅ Activo     :2886     UI de gestión de sesiones
-Backend Multiagente ✅ Activo     :5000     Express + Socket.io + Webhook
-Frontend SPA        ✅ Sirviendo  :5000/    Sirve index.html como estático
-Webhook             ✅ Configurado          apunta a http://10.89.1.1:3000/webhook/message
-Base de Datos       ✅ Creada     SQLite    backend/prisma/dev.db
-Usuarios seed       ✅ Cargados            carlos, maria, juan, ana (pass: operador123)
+OpenWA API          ✅ Docker     :8002     Construido desde OpenWA/Dockerfile
+OpenWA Dashboard    ✅ Docker     :2886     Construido desde OpenWA/dashboard/Dockerfile
+Backend Multiagente ✅ Docker     :5000     Construido desde backend/Dockerfile
+Frontend SPA        ✅ Embebido   :5000/    Servido por el backend como /static
+Webhook             ✅ Interno             openwa-api → backend:5000/webhook/message
+Red Docker          ✅ whatsapp-net        Todos se ven por nombre de servicio
+Base de Datos       ✅ Volumen    SQLite    backend_data:/app/data/dev.db
+Usuarios seed       ✅ Automático           Se siembra al arrancar el contenedor
 
 =========================================================================
 5. CREDENCIALES Y CONFIGURACIÓN
@@ -168,41 +174,66 @@ Auth:               Header: X-API-Key
 =========================================================================
 9. FLUJO DE DATOS ESPERADO
 =========================================================================
-WhatsApp Phone
-    ↓ (mensaje entrante)
-OpenWA Gateway (puerto 2785)
-    ↓ (webhook HTTP POST)
-Backend /webhook/message (puerto 3000)
-    ↓ (guarda en BD + emite WebSocket)
-Frontend (todos los operadores conectados)
-    ↓ (operador escribe respuesta)
-Backend API /api/chats/:id/send
-    ↓ (guarda en BD + POST a OpenWA)
-OpenWA API /api/sessions/{id}/messages/send-text
-    ↓ (envía a WhatsApp)
-WhatsApp Phone del técnico
+
+╔══════════════════════════════════════════════════════════╗
+║               RED DOCKER: whatsapp-net                  ║
+╠══════════════════════════════════════════════════════════╣
+║                                                          ║
+║  📱 WhatsApp (Teléfono)                                  ║
+║      ↓ (mensaje entrante)                                ║
+║  ┌──────────────┐  webhook   ┌───────────────────┐      ║
+║  │ openwa-api   │───────────▶│ backend:5000      │      ║
+║  │ :2785        │            │ /webhook/message   │      ║
+║  │ QR + Engine  │            │ Socket.io + Prisma │      ║
+║  └──────┬───────┘            └────────┬──────────┘      ║
+║         │                            │ WebSocket         ║
+║         │ API POST                   │                   ║
+║         │ (send-text)                ▼                   ║
+║         │                    ┌───────────────────┐      ║
+║         │                    │ Navegador Web     │      ║
+║         │                    │ localhost:5000    │      ║
+║         │                    │ (Frontend SPA)    │      ║
+║         │                    └───────────────────┘      ║
+║         │                                                ║
+║  ┌──────┴────────┐                                       ║
+║  │ openwa-       │                                       ║
+║  │ dashboard:80  │                                       ║
+║  │ :2886         │                                       ║
+║  └───────────────┘                                       ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
 
 =========================================================================
 10. COMANDOS ÚTILES
 =========================================================================
-# Iniciar backend multiagente:
+# LEVANTAR TODO EL SISTEMA (un solo comando):
+  cd ~/Escritorio/whatsappumsr
+  podman-compose up -d --build
+
+# Para desarrollo local (backend fuera de Docker):
   cd ~/Escritorio/whatsappumsr/backend && npm start
 
-# Iniciar OpenWA:
-  cd ~/Escritorio/whatsappumsr/OpenWA
-  podman-compose -f docker-compose.dev.yml up -d --build
-
-# Ver logs de OpenWA:
+# Ver logs de todos los servicios:
   podman logs -f openwa-api
+  podman logs -f openwa-dashboard
+  podman logs -f whatsapp-backend
+
+# Acceder a los contenedores:
+  podman exec -it openwa-api sh
 
 # Simular mensaje entrante (prueba sin WhatsApp):
   curl -X POST http://localhost:5000/webhook/message \
     -H "Content-Type: application/json" \
     -d '{"event":"onMessage","data":{"chatId":"521234567890@c.us","sender":{"name":"Luis Técnico"},"body":"Necesito soporte"}}'
 
+# Obtener API Key de OpenWA:
+  podman exec openwa-api cat /app/data/.api-key
+
 # Verificar conexión OpenWA desde backend:
-  curl -s http://localhost:5000/api/openwa/status \
-    -H "Authorization: Bearer $(TOKEN)"
+  TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"carlos","password":"operador123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+  curl -s http://localhost:5000/api/openwa/status -H "Authorization: Bearer $TOKEN"
 
 # Login de prueba:
   curl -s -X POST http://localhost:5000/api/auth/login \
@@ -210,9 +241,10 @@ WhatsApp Phone del técnico
     -d '{"username":"carlos","password":"operador123"}'
 
 # Enlaces:
-  Frontend:  http://localhost:5000
-  OpenWA:    http://localhost:8002 (API) / http://localhost:2886 (Dashboard)
-  Swagger:   http://localhost:8002/api/docs
+  Frontend:         http://localhost:5000
+  OpenWA API:       http://localhost:8002
+  OpenWA Dashboard: http://localhost:2886
+  Swagger Docs:     http://localhost:8002/api/docs
 
 =========================================================================
 fin de la bitácora
