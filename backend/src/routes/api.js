@@ -198,6 +198,69 @@ router.get('/unassigned-count', verifyToken, async (req, res) => {
   }
 });
 
+router.post('/chats/sync', verifyToken, async (req, res) => {
+  try {
+    const result = await openwa.syncChats(chatService);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al sincronizar chats' });
+  }
+});
+
+router.post('/chats/:id/sync-messages', verifyToken, async (req, res) => {
+  try {
+    const chatId = parseInt(req.params.id);
+    const chat = await chatService.getChatById(chatId);
+    if (!chat) return res.status(404).json({ error: 'Chat no encontrado' });
+
+    const messages = await openwa.fetchChatHistory(chat.whatsappId, 100);
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.json({ synced: 0 });
+    }
+
+    let synced = 0;
+    for (const msg of messages) {
+      try {
+        const contact = msg.contact || {};
+        const senderName = contact.name || contact.pushName || (msg.fromMe ? 'Tú' : 'Desconocido');
+        const body = msg.body || '';
+        const timestamp = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
+
+        // Dedup by body + timestamp
+        const existing = await prisma.message.findFirst({
+          where: { chatId, body, timestamp },
+        });
+        if (existing) continue;
+
+        await prisma.message.create({
+          data: {
+            chatId,
+            senderWhatsappId: msg.author || msg.from || '',
+            senderName,
+            body,
+            timestamp,
+            isFromAgent: msg.fromMe || false,
+            messageType: msg.type || 'text',
+          },
+        });
+        synced++;
+      } catch (msgErr) {
+        // skip individual message errors
+      }
+    }
+
+    // Update last message on the chat
+    if (synced > 0 && messages[0]?.body) {
+      await chatService.updateChatLastMessage(chatId, messages[0].body);
+    }
+
+    res.json({ synced });
+  } catch (err) {
+    console.error('[API] Error sincronizando mensajes:', err.message);
+    res.status(500).json({ error: 'Error al sincronizar mensajes' });
+  }
+});
+
 router.get('/openwa/status', verifyToken, async (req, res) => {
   try {
     const status = await openwa.checkConnection();

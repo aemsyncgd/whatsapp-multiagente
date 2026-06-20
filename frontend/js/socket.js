@@ -76,10 +76,11 @@ function showToast(message, type = 'info') {
     success: 'bg-green-500',
     warning: 'bg-yellow-500',
     error: 'bg-red-500',
-    info: 'bg-blue-500',
+    info: 'bg-gray-700',
   };
   const toast = document.createElement('div');
-  toast.className = `toast ${colors[type] || colors.info} text-white px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2`;
+  toast.className = `${colors[type] || colors.info} text-white px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2 animate-bounce-in`;
+  toast.style.animation = 'slideIn 0.3s ease';
   toast.innerHTML = `<span>${message}</span>`;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 4000);

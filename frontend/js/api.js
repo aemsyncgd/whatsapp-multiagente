@@ -64,10 +64,20 @@ async function fetchOpenWaStatus() {
   return request('GET', '/openwa/status');
 }
 
+async function syncChats() {
+  return request('POST', '/chats/sync');
+}
+
+async function syncChatMessages(chatId) {
+  return request('POST', `/chats/${chatId}/sync-messages`);
+}
+
 export {
   login, logout,
   fetchChats, fetchMessages,
   assignChat, releaseChat, resolveChat,
   sendMessage,
   fetchUnassignedCount, fetchOpenWaStatus,
+  syncChats,
+  syncChatMessages,
 };

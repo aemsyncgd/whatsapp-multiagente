@@ -29,10 +29,10 @@ app.use(express.json({ limit: '10mb' }));
 
 app.use('/api', apiRoutes);
 
-app.use(express.static(path.join(__dirname, '../../frontend')));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../frontend/index.html'));
+  res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 app.post('/webhook/message', async (req, res) => {
@@ -40,11 +40,11 @@ app.post('/webhook/message', async (req, res) => {
     const payload = req.body;
     const event = payload.event || '';
 
-    if (event === 'onMessage') {
+    if (event === 'message.received' || event === 'onMessage') {
       const msg = payload.data || payload;
       const chatId = msg.chatId || msg.from || '';
-      const sender = msg.sender || msg.author || {};
-      const senderName = sender.name || sender.pushname || sender.shortName || msg.senderName || 'Desconocido';
+      const contact = msg.contact || {};
+      const senderName = contact.name || contact.pushName || 'Desconocido';
       const body = msg.body || msg.message || msg.caption || '';
       const isGroup = chatId.includes('@g.us');
 
@@ -56,7 +56,7 @@ app.post('/webhook/message', async (req, res) => {
 
       const savedMessage = await chatService.saveMessage({
         chatId: chat.id,
-        senderWhatsappId: msg.sender?.id || msg.from || '',
+        senderWhatsappId: msg.author || msg.from || '',
         senderName,
         body,
         isFromAgent: false,
@@ -77,9 +77,17 @@ app.post('/webhook/message', async (req, res) => {
       emitToAll(io, 'stats:update', unassignedCount);
 
       res.json({ ok: true });
-    } else if (event === 'onQrCode') {
+    } else if (event === 'session.qr' || event === 'onQrCode') {
       const qr = payload.data?.qr || payload.qr || '';
       if (qr) emitToAll(io, 'openwa:qr', { qr });
+      res.json({ ok: true });
+    } else if (event === 'session.status') {
+      const status = payload.data?.status || '';
+      if (status === 'ready' || status === 'connected') {
+        emitToAll(io, 'openwa:connected', { connected: true });
+      } else if (status === 'disconnected') {
+        emitToAll(io, 'openwa:disconnected', { connected: false });
+      }
       res.json({ ok: true });
     } else if (event === 'onConnected') {
       emitToAll(io, 'openwa:connected', { connected: true });
@@ -98,13 +106,22 @@ app.post('/webhook/message', async (req, res) => {
 
 setupSocket(io);
 
-server.listen(config.port, '0.0.0.0', () => {
+server.listen(config.port, '0.0.0.0', async () => {
   console.log(`\n============================================`);
   console.log(`  Sistema Multiagente WhatsApp`);
   console.log(`  Backend corriendo en puerto ${config.port}`);
   console.log(`  Webhook: http://0.0.0.0:${config.port}/webhook/message`);
   console.log(`  Frontend: http://0.0.0.0:${config.port}`);
   console.log(`============================================\n`);
+
+  // Auto-sync chats from OpenWA
+  setTimeout(async () => {
+    const { syncChats } = require('./services/openwa');
+    const chatService = require('./services/chat');
+    console.log('[Server] Sincronizando chats desde OpenWA...');
+    const result = await syncChats(chatService);
+    console.log(`[Server] Sincronización completada: ${result.synced} chats`);
+  }, 5000);
 });
 
 process.on('SIGTERM', async () => {

@@ -4,7 +4,20 @@ const prisma = new PrismaClient();
 async function upsertChat(whatsappId, name, type) {
   return prisma.chat.upsert({
     where: { whatsappId },
-    update: { name, updatedAt: new Date() },
+    update: { updatedAt: new Date() },
+    create: {
+      whatsappId,
+      name,
+      type,
+      status: type === 'group' ? 'active' : 'unassigned',
+    },
+  });
+}
+
+async function createOrUpdateChat(whatsappId, name, type) {
+  return prisma.chat.upsert({
+    where: { whatsappId },
+    update: { name, type, updatedAt: new Date() },
     create: {
       whatsappId,
       name,
@@ -115,6 +128,7 @@ async function getUnassignedCount() {
 
 module.exports = {
   upsertChat,
+  createOrUpdateChat,
   saveMessage,
   updateChatLastMessage,
   assignChat,

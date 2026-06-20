@@ -10,6 +10,17 @@ const api = axios.create({
   },
 });
 
+async function fetchChatHistory(chatId, limit = 50) {
+  try {
+    const encodedChatId = encodeURIComponent(chatId);
+    const response = await api.get(`/api/sessions/${config.openwa.sessionId}/messages/${encodedChatId}/history?limit=${limit}`);
+    return response.data;
+  } catch (err) {
+    console.error(`[OpenWA] Error obteniendo historial de ${chatId}:`, err.message);
+    return [];
+  }
+}
+
 async function sendMessage(to, body) {
   try {
     const response = await api.post(`/api/sessions/${config.openwa.sessionId}/messages/send-text`, {
@@ -24,6 +35,32 @@ async function sendMessage(to, body) {
   }
 }
 
+async function syncChats(chatService) {
+  try {
+    const res = await api.get(`/api/sessions/${config.openwa.sessionId}/chats`);
+    const chats = res.data;
+    if (!Array.isArray(chats)) {
+      console.log('[OpenWA] No se pudieron obtener chats (formato inesperado)');
+      return { synced: 0 };
+    }
+
+    for (const chat of chats) {
+      const id = chat.id || '';
+      const name = chat.name || chat.id || 'Chat';
+      const isGroup = id.endsWith('@g.us');
+      const isLid = id.endsWith('@lid');
+      if (isLid) continue; // skip privacy IDs
+      await chatService.createOrUpdateChat(id, name, isGroup ? 'group' : 'direct');
+    }
+
+    console.log(`[OpenWA] Sincronizados ${chats.length} chats`);
+    return { synced: chats.length };
+  } catch (err) {
+    console.error('[OpenWA] Error sincronizando chats:', err.message);
+    return { synced: 0 };
+  }
+}
+
 async function checkConnection() {
   try {
     // Verificar salud del API y estado de la sesión
@@ -32,7 +69,7 @@ async function checkConnection() {
 
     const sessions = await api.get('/api/sessions');
     const session = sessions.data?.find(s => s.id === config.openwa.sessionId);
-    const connected = session?.status === 'connected';
+    const connected = session?.status === 'connected' || session?.status === 'ready';
 
     if (!connected) {
       console.log(`[OpenWA] Sesión "${config.openwa.sessionId}" estado: ${session?.status || 'desconocido'}`);
@@ -45,4 +82,4 @@ async function checkConnection() {
   }
 }
 
-module.exports = { sendMessage, checkConnection };
+module.exports = { sendMessage, checkConnection, syncChats, fetchChatHistory };

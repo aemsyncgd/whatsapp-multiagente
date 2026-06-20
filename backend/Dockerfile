@@ -6,15 +6,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY backend/package*.json ./
 RUN npm install --production
 
-COPY prisma/ ./prisma/
+COPY backend/prisma/ ./prisma/
 RUN npx prisma generate
 
-COPY src/ ./src/
-COPY .env ./
-COPY docker-entrypoint.sh /usr/local/bin/
+COPY backend/src/ ./src/
+COPY backend/.env ./
+COPY frontend/ ./frontend/
+COPY backend/docker-entrypoint.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

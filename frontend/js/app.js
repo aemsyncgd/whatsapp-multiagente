@@ -1,5 +1,5 @@
 import { state, on, emit, setState } from './store.js';
-import { login, logout, fetchChats, fetchMessages, assignChat, releaseChat, sendMessage, fetchUnassignedCount, fetchOpenWaStatus } from './api.js';
+import { login, logout, fetchChats, fetchMessages, assignChat, releaseChat, sendMessage, fetchUnassignedCount, fetchOpenWaStatus, syncChats, syncChatMessages } from './api.js';
 import { connect, disconnect, showToast } from './socket.js';
 
 let chatListPolling = null;
@@ -17,6 +17,7 @@ function init() {
   bindSidebarNav();
   bindChatActions();
   bindSendMessage();
+  bindSyncButton();
   subscribeToEvents();
 }
 
@@ -78,10 +79,24 @@ function enterApp() {
   loadUnassignedCount();
   checkOpenWaStatus();
 
+  // Auto-sync grupos desde OpenWA al iniciar
+  doSyncChats();
+
   chatListPolling = setInterval(() => {
     loadTab(state.currentTab, true);
     loadUnassignedCount();
   }, 5000);
+}
+
+async function doSyncChats(silent = true) {
+  try {
+    const result = await syncChats();
+    if (!silent) showToast(`Sincronizados ${result.synced} chats`, 'success');
+    loadTab(state.currentTab);
+    return result;
+  } catch (err) {
+    if (!silent) showToast('Error al sincronizar: ' + err.message, 'error');
+  }
 }
 
 // ---- Navegación ------------------------------------------------------
@@ -131,9 +146,9 @@ async function checkOpenWaStatus() {
 function updateOpenWaStatusUI() {
   const el = document.getElementById('openwaStatus');
   if (state.openwaConnected) {
-    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-green-600">WhatsApp Conectado</span>';
+    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span><span class="text-green-600 text-xs">WhatsApp Conectado</span>';
   } else {
-    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span><span class="text-red-500">WhatsApp Desconectado</span>';
+    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span><span class="text-red-500 text-xs">WhatsApp Desconectado</span>';
   }
 }
 
@@ -144,9 +159,9 @@ function renderChatList(chats, tab) {
 
   if (!chats || chats.length === 0) {
     container.innerHTML = `
-      <div class="flex flex-col items-center justify-center h-full text-gray-400 p-6">
-        <i class="fa-regular fa-face-smile text-4xl mb-3"></i>
-        <p class="text-sm">No hay chats aquí</p>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:1.5rem;color:var(--text-muted);">
+        <i class="fa-regular fa-face-smile" style="font-size:2rem;margin-bottom:0.75rem;"></i>
+        <p style="font-size:0.875rem;">No hay chats aquí</p>
       </div>`;
     return;
   }
@@ -161,30 +176,33 @@ function renderChatList(chats, tab) {
 
     let badge = '';
     if (chat.type === 'group') {
-      badge = '<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-600 font-medium">Grupo</span>';
+      badge = '<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:#e8f5e9;color:#2e7d32;">Grupo</span>';
     } else if (assignedName) {
-      badge = `<span class="text-xs px-1.5 py-0.5 rounded font-medium ${isMine ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}">${isMine ? 'Tuyo' : assignedName}</span>`;
+      const bg = isMine ? '#e8f5e9' : '#f1f5f9';
+      const color = isMine ? '#2e7d32' : 'var(--text-secondary)';
+      badge = `<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:${bg};color:${color};">${isMine ? 'Tuyo' : escapeHtml(assignedName)}</span>`;
     } else {
-      badge = '<span class="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-medium">Libre</span>';
+      badge = '<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:#fef3c7;color:#d97706;">Libre</span>';
     }
 
+    const avatarBg = chat.type === 'group' ? 'var(--primary)' : (assignedName ? 'var(--primary)' : '#d97706');
+
     return `
-      <div class="px-4 py-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${isActive ? 'chat-card-active' : ''}"
+      <div class="chat-card" style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;${isActive ? 'background:var(--primary-light);border-left-color:var(--primary);' : ''}"
            data-chat-id="${chat.id}" data-chat-type="${chat.type}" data-unassigned="${isUnassigned}">
-        <div class="flex items-start gap-3">
-          <div class="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white text-sm font-bold
-            ${chat.type === 'group' ? 'bg-green-500' : (assignedName ? 'bg-blue-500' : 'bg-orange-500')}">
-            ${chat.type === 'group' ? '<i class="fa-solid fa-users text-xs"></i>' : escapeHtml(chat.name.charAt(0).toUpperCase())}
+        <div style="display:flex;gap:0.75rem;align-items:flex-start;">
+          <div style="width:40px;height:40px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:white;font-size:0.875rem;font-weight:700;background:${avatarBg};">
+            ${chat.type === 'group' ? '<i class="fa-solid fa-users" style="font-size:0.75rem;"></i>' : escapeHtml(chat.name.charAt(0).toUpperCase())}
           </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between">
-              <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(chat.name)}</p>
-              <span class="text-xs text-gray-400 flex-shrink-0 ml-1">${lastTime}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <p style="font-size:0.875rem;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(chat.name)}</p>
+              <span style="font-size:0.75rem;color:var(--text-muted);flex-shrink:0;margin-left:0.5rem;">${lastTime}</span>
             </div>
-            <p class="text-xs text-gray-500 truncate mt-0.5">${escapeHtml(lastMsg.substring(0, 80))}</p>
-            <div class="mt-1.5 flex items-center gap-2">
+            <p style="font-size:0.8125rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:0.125rem;">${escapeHtml(lastMsg.substring(0, 80))}</p>
+            <div style="margin-top:0.375rem;display:flex;align-items:center;gap:0.5rem;">
               ${badge}
-              ${isUnassigned ? `<button onclick="window.tomarChat(event, ${chat.id})" class="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"><i class="fa-solid fa-hand-pointer mr-1"></i>Tomar Chat</button>` : ''}
+              ${isUnassigned ? `<button onclick="window.tomarChat(event, ${chat.id})" class="btn-primary" style="font-size:0.75rem;padding:0.25rem 0.625rem;"><i class="fa-solid fa-hand-pointer mr-1"></i>Tomar Chat</button>` : ''}
             </div>
           </div>
         </div>
@@ -247,7 +265,14 @@ async function openChat(chatId, chatType) {
   }
 
   try {
-    const messages = await fetchMessages(chatId);
+    let messages = await fetchMessages(chatId);
+    // If no messages (new chat), try syncing from OpenWA history
+    if (messages.length === 0) {
+      const result = await syncChatMessages(chatId);
+      if (result.synced > 0) {
+        messages = await fetchMessages(chatId);
+      }
+    }
     setState({ messages });
     renderMessages(messages);
   } catch {
@@ -263,9 +288,9 @@ function renderMessages(messages) {
 
   if (!messages || messages.length === 0) {
     container.innerHTML = `
-      <div class="flex flex-col items-center justify-center h-full text-gray-400">
-        <i class="fa-regular fa-comment-dots text-4xl mb-2"></i>
-        <p class="text-sm">No hay mensajes aún. Envía el primero.</p>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);">
+        <i class="fa-regular fa-comment-dots" style="font-size:2rem;margin-bottom:0.5rem;"></i>
+        <p style="font-size:0.875rem;">No hay mensajes aún. Envía el primero.</p>
       </div>`;
     return;
   }
@@ -278,26 +303,26 @@ function renderMessages(messages) {
 
     if (isAgent) {
       return `
-        <div class="message-agent rounded-lg p-3 max-w-[80%] ml-auto">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-semibold text-blue-700">
+        <div class="message-agent" style="padding:0.75rem;max-width:80%;margin-left:auto;">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
+            <span style="font-size:0.75rem;font-weight:700;color:var(--primary);">
               <i class="fa-solid fa-headset mr-1"></i>${escapeHtml(agentName)}
             </span>
-            <span class="text-[10px] text-gray-400">${date} ${time}</span>
+            <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
           </div>
-          <p class="text-sm text-gray-800">${escapeHtml(msg.body)}</p>
+          <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
         </div>`;
     }
 
     return `
-      <div class="message-technician rounded-lg p-3 max-w-[80%]">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-xs font-semibold text-gray-600">
-            <i class="fa-brands fa-whatsapp mr-1 text-green-500"></i>${escapeHtml(msg.senderName || 'Técnico')}
+      <div class="message-technician" style="padding:0.75rem;max-width:80%;">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
+          <span style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);">
+            <i class="fa-brands fa-whatsapp mr-1" style="color:var(--primary);"></i>${escapeHtml(msg.senderName || 'Técnico')}
           </span>
-          <span class="text-[10px] text-gray-400">${date} ${time}</span>
+          <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
         </div>
-        <p class="text-sm text-gray-800">${escapeHtml(msg.body)}</p>
+        <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
       </div>`;
   }).join('');
 
@@ -367,9 +392,7 @@ function bindSendMessage() {
     sendBtn.disabled = true;
 
     try {
-      const msg = await sendMessage(chatId, body);
-      state.messages.push(msg);
-      renderMessages(state.messages);
+      await sendMessage(chatId, body);
       loadTab(state.currentTab, true);
     } catch (err) {
       showToast('Error al enviar: ' + err.message, 'error');
@@ -389,6 +412,12 @@ function bindSendMessage() {
   sendBtn.addEventListener('click', doSend);
 }
 
+function bindSyncButton() {
+  document.getElementById('syncBtn').addEventListener('click', () => {
+    doSyncChats(false);
+  });
+}
+
 function closeChatWindow() {
   setState({ activeChatId: null });
   document.getElementById('emptyState').classList.remove('hidden');
@@ -401,8 +430,11 @@ function closeChatWindow() {
 function subscribeToEvents() {
   on('message:received', (message) => {
     if (state.activeChatId === message.chatId) {
-      state.messages.push(message);
-      renderMessages(state.messages);
+      const exists = state.messages.some(m => m.id === message.id);
+      if (!exists) {
+        state.messages.push(message);
+        renderMessages(state.messages);
+      }
     }
     loadTab(state.currentTab, true);
   });
