@@ -7,74 +7,98 @@ Stack funcionando con 3 contenedores en podman-compose:
 - `openwa-dashboard` (OpenWA dashboard, puerto 2886)
 - `whatsapp-backend` (backend Node.js + frontend SPA, puerto 5000)
 
-WhatsApp conectado, sesión `e3c87c44-a6d8-4054-bb33-77d780773aff` (número `584129520171`).
+WhatsApp conectado, sesión `3f1cac78-bf08-4738-b23d-3783c9eaaa4a` (número `584129520171`, pushName `aemsyncgd`).
+
+**89 chats** (71 `@lid` direct + 18 `@g.us` grupos). Envío y recepción de texto, imágenes, documentos y audio funcional.
 
 ## Funcionalidades operativas
 
-- Webhook recibe mensajes entrantes, guarda en SQLite y emite por socket.
-- Agentes pueden responder desde el frontend.
+- Webhook recibe mensajes entrantes (texto, imagen, video, audio, voz, documento, sticker, ubicación, contacto), guarda en SQLite y emite por socket.
+- Agentes responden desde el frontend (texto y audio grabado).
 - 4 operadores precargados: carlos, maria, juan, ana (password: operador123).
-- Sincronización automática de chats (90 chats) al iniciar el backend.
-- Sincronización de últimos mensajes (5 por chat) al iniciar.
-- Auto-descubrimiento del session ID de OpenWA (ya no está hardcodeado).
-- Sincronización automática cuando OpenWA reporta estado `ready` vía webhook.
+- Sincronización automática de chats y últimos mensajes al iniciar el backend.
+- Auto-descubrimiento del session ID de OpenWA (no hardcodeado).
+- Sincronización automática cuando OpenWA reporta `ready` vía webhook.
 - Retry de sincronización al iniciar (hasta 5 intentos si OpenWA no está listo).
-- Interfaz rediseñada con paleta de colores personalizada (verde WhatsApp #25d366).
-- Layout con panel de mensajes de altura fija (scroll interno, botones siempre visibles).
-- Sincronización de mensajes de grupo al abrir un chat (siempre, no solo cuando está vacío).
-- Nombre de remitente mejorado: muestra últimos 4 dígitos del JID en vez de "Desconocido".
+- Exponential backoff (4 reintentos, 1s→2s→4s→8s) en history API para 429.
+- Nombre de remitente: últimos 4 dígitos del JID si no hay pushName.
+- Pantalla oscura por defecto (`data-theme="dark"`), toggle luna/sol persistente en localStorage.
+- Interfaz tipo WhatsApp Web: sidebar, lista de chats, panel de mensajes scrollable.
+- Input tipo textarea con auto-resize (Enter envía, Ctrl+Enter nueva línea).
+- Grabación de audio vía MediaRecorder (`audio/webm;codecs=opus`).
+- Botón de adjuntar archivos (placeholder).
+- Sincronización masiva de todos los chats (`POST /chats/sync-messages-all`).
+- Reasignación de operadores entre chats.
+- Recepción de medios: imágenes inline, video con controls, audio con reproductor y fallback.
+- Etiquetado visual de mensajes como texto, foto, video, audio, documento, sticker, etc.
 
 ## Cambios realizados
 
-### openwa.js
-- `resolveSessionId()`: descubre automáticamente la sesión activa desde OpenWA.
-- Fallback al `OPENWA_SESSION_ID` del env si no hay sesión activa.
-- Todas las funciones (`fetchChatHistory`, `sendMessage`, `syncChats`, `checkConnection`) usan `resolveSessionId()`.
-- `checkConnection()` busca cualquier sesión `ready`/`connected` si la hardcodeada no funciona.
-- `fetchChatHistory()` con exponential backoff (4 reintentos, delay 1s→2s→4s→8s) para 429.
+### Audio — envío (workaround WA Web roto)
+- **Causa raíz**: WhatsApp Web interno (`prepRawMedia`) se rompe para mimetypes `audio/ogg`, `audio/wav`, `audio/mpeg` con error `t: t` desde Puppeteer.
+- **Solución**: convertir WebM Opus (grabación del navegador) a AAC/MP4 vía ffmpeg en el backend, luego enviar con `send-audio` y `mimetype: 'audio/mp4'`. Este mimetype NO dispara el procesamiento roto.
+- El audio llega al destinatario como mensaje de audio reproducible (no BIN, no documento).
+- `backend/Dockerfile`: se agregó `ffmpeg`.
+- `backend/src/services/openwa.js`: `convertAudioToAac()` + `sendAudioMessage()` actualizado.
 
-### server.js
-- `autoSync()` con retry (5 intentos, 10s de espera) para sincronizar chats/mensajes al iniciar.
-- Webhook `session.status = ready` también dispara `syncChats()`.
-- Webhook handler actualiza retroactivamente nombres de contactos "Desconocido" cuando recibe un mensaje con nombre real.
+### Audio — recepción (frontend)
+- MIME type con parámetros (`audio/ogg; codecs=opus`) se sanitiza a solo `audio/ogg` para la data URI.
+- `<audio>` incluye `onerror` que muestra fallback si el navegador no soporta el formato.
+- `backend/src/server.js`: `maxHttpBufferSize` de Socket.IO aumentado a 5MB.
 
-### chat.js
-- Nueva función `getAllChats()` exportada.
+### Parche a OpenWA adapter
+- `sendDocumentMessage` ahora pasa `sendMediaAsDocument: true` a WhatsApp Web (antes no lo hacía, causando que documentos con mimetype `audio/*` intentaran procesarse como audio y fallaran).
+- `sendMediaMessage` acepta parámetro `asDocument`.
+- `patch_openwa_adapter.sh` actualizado, imagen OpenWA reconstruida.
 
-### index.html
-- Rediseñado con paleta exacta proporcionada por el usuario.
-- CSS personalizado (sin Tailwind utility classes en HTML).
-- Layout corregido: sidebar fija, chat list fija, panel de mensajes con `flex-1 overflow-y-auto`.
-- Animaciones slide-in para mensajes nuevos.
+### Prisma — migración media
+- Nuevos campos en Message: `mediaUrl`, `mediaMimeType`, `mediaFilename`, `mediaSize`.
+- Migración `20260624151722_add_media_fields` aplicada.
 
-### app.js
-- Actualizado `renderMessages()` con clases CSS personalizadas.
-- `updateOpenWaStatusUI()` usa variables CSS en vez de Tailwind.
-- Toggle de tema (oscuro/claro) con persistencia en localStorage.
+### Filtro de chats fantasma
+- Se excluyen `0@c.us`, `@newsletter`, `@broadcast`.
+- `@lid` ya no se filtra (son contactos individuales reales).
 
-### index.html
-- Modo oscuro por defecto con `data-theme="dark"`.
-- Botón de cambio de tema (luna/sol) en la sidebar.
-- Variables CSS para burbujas (`--msg-outgoing`, `--msg-incoming`), badges (`--badge-*`) que se adaptan al tema.
-- Animación pulse para estado desconectado.
-- Focus ring verde en inputs.
-- Transiciones suaves en cambios de tema.
+### Webhook
+- Preserva `msg.type` original en `messageType` (no hardcodea `'text'`).
+- Maneja `media.data`, `media.mimetype`, `media.filename`, `media.filesize`.
+- Renderiza `renderMediaPreview()` para mostrar íconos según tipo en la lista de chats.
 
-## Pendientes para mañana
+### Endpoints nuevos
+- `POST /api/chats/sync-messages-all`: itera todos los chats, trae hasta 500 mensajes cada uno.
+- `POST /api/chats/:id/send-audio`: recibe base64 + mimetype, guarda, envía a WhatsApp.
+- `POST /api/chats/:id/reassign`: reasigna operador a un chat.
 
-### 1. Caché de nombres de contacto
-OpenWA no proporciona `contact.pushName` en respuestas del history API. Aunque el webhook tiene contacto real, el sync histórico muestra últimos 4 dígitos del JID. Considerar endpoint `/contacts/{jid}` de OpenWA para resolver nombres durante sync.
+### Frontend (app.js)
+- `renderMessageBody()` maneja `image/video/audio/voice/document/sticker/location/contact/revoked`.
+- `bindSendMessage()`: textarea con Enter/Ctrl+Enter, grabación de audio, botón adjuntar.
+- `doSyncChats()` cambia a pestaña "Sin asignar" después de sync.
+- `sendAudioMessage()`: lee blob del MediaRecorder, envía base64 al backend.
+- `switchTab()` con filtro por tipo de chat.
+- Toggle dark mode con persistencia localStorage.
 
-### 2. Send a WhatsApp
-El endpoint `POST /chats/:id/send` guarda el mensaje localmente e intenta enviar a OpenWA. Verificar que `sendMessage()` funciona correctamente (puede fallar silenciosamente).
+### Frontend (api.js)
+- Exporta `sendMessage`, `sendAudio`, `syncAllMessages`, `fetchChatHistory`.
 
-### 3. Producción
-- Mover `API_MASTER_KEY`, `OPENWA_TOKEN` y `JWT_SECRET` a variables de entorno.
+### openwa-dashboard
+- Puerto `2886`, sirve frontend OpenWA para gestionar sesiones.
+
+## Pendientes
+
+### 1. Notas de voz PTT verdaderas
+El workaround actual envía audio como mensaje de audio reproducible (AAC/MP4), no como nota de voz PTT (con forma de onda azul). Para PTT se necesita que `sendAudioAsVoice: true` funcione con `audio/ogg`, lo cual está roto en esta versión de WA Web. Solución: actualizar `whatsapp-web.js` o esperar una versión de OpenWA que incluya el fix.
+
+### 2. Adjuntar archivos desde el frontend
+Botón de adjuntar muestra toast "Próximamente". Implementar `input[type=file]` para imágenes, videos, documentos.
+
+### 3. Caché de nombres de contacto
+OpenWA no proporciona `contact.pushName` en respuestas del history API. El sync histórico muestra últimos 4 dígitos del JID. Considerar endpoint `/contacts/{jid}` de OpenWA para resolver nombres durante sync.
+
+### 4. Producción
+- Mover `API_MASTER_KEY`, `OPENWA_TOKEN` y `JWT_SECRET` a variables de entorno reales.
 - Mover contraseñas de operadores desde `seed.js` a variables de entorno.
 - Evaluar si `QUEUE_ENABLED=false` puede causar pérdida de webhooks bajo carga.
+- Agregar proxy reverso (Caddy/Nginx) con TLS para producción.
 
-### 4. Restart de OpenWA
-Después de reiniciar el contenedor, la sesión queda `disconnected`. El backend reintenta pero necesita detectar cambio de estado vía webhook `session.status = ready`. A veces el webhook no se dispara automáticamente.
-
-### 5. Caché de nombres de contacto
-OpenWA no proporciona `contact.pushName` en respuestas del history API. Aunque el webhook tiene contacto real, el sync histórico muestra últimos 4 dígitos del JID. Considerar endpoint `/contacts/{jid}` de OpenWA para resolver nombres durante sync.
+### 5. Restart de OpenWA
+Después de reiniciar el contenedor, la sesión queda `disconnected`. Requiere `POST /sessions/{id}/start` manual o restart del backend. A veces el webhook `session.status = ready` no se dispara automáticamente.
