@@ -27,10 +27,17 @@ async function resolveSessionId() {
   } catch (err) {
     console.error('[OpenWA] Error descubriendo sesión:', err.message);
   }
-  // fallback al env var
+  // fallback al env var — but verify it actually exists
   if (config.openwa.sessionId) {
-    activeSessionId = config.openwa.sessionId;
-    return activeSessionId;
+    try {
+      const s = await api.get(`/api/sessions/${config.openwa.sessionId}`);
+      if (s.data?.status === 'ready' || s.data?.status === 'connected') {
+        activeSessionId = config.openwa.sessionId;
+        return activeSessionId;
+      }
+    } catch {
+      // fallback ID doesn't exist or not ready
+    }
   }
   return null;
 }
@@ -100,26 +107,46 @@ async function checkConnection() {
     const health = await api.get('/api/health/ready');
     if (health.data?.status !== 'ok') return { connected: false };
 
-    const sessions = await api.get('/api/sessions');
-    let session = null;
-    if (config.openwa.sessionId) {
-      session = sessions.data?.find(s => s.id === config.openwa.sessionId);
+    await resolveSessionId();
+    const sid = activeSessionId;
+    if (!sid) {
+      const sessions = await api.get('/api/sessions');
+      console.log(`[OpenWA] Sin sesión activa. Sesiones: ${(sessions.data || []).map(s => `${s.id.substring(0,8)}...:${s.status}`).join(', ') || 'ninguna'}`);
+      return { connected: false };
     }
-    if (!session || session.status !== 'ready') {
-      // find any ready session
-      session = sessions.data?.find(s => s.status === 'ready' || s.status === 'connected');
-    }
-    const connected = session?.status === 'connected' || session?.status === 'ready';
-
-    if (!connected) {
-      console.log(`[OpenWA] Sin sesión activa. Sesiones encontradas: ${(sessions.data || []).map(s => `${s.id.substring(0,8)}...:${s.status}`).join(', ') || 'ninguna'}`);
-    }
-
-    return { connected, status: session?.status, sessionId: session?.id };
+    return { connected: true, status: 'ready', sessionId: sid };
   } catch (err) {
     console.error('[OpenWA] Error de conexión:', err.message);
     return { connected: false };
   }
 }
 
-module.exports = { sendMessage, checkConnection, syncChats, fetchChatHistory, resolveSessionId };
+async function ensureWebhook() {
+  const sid = await resolveSessionId();
+  if (!sid) return false;
+  try {
+    const res = await api.get(`/api/sessions/${sid}/webhooks`);
+    const webhooks = res.data;
+    if (Array.isArray(webhooks) && webhooks.some(w => w.url?.includes('/webhook/message'))) {
+      return true; // already exists
+    }
+
+    const webhookUrl = process.env.WEBHOOK_URL || `http://backend:5000/webhook/message`;
+    await api.post(`/api/sessions/${sid}/webhooks`, {
+      url: webhookUrl,
+      events: ['message.received', 'session.status', 'session.qr'],
+      active: true,
+    });
+    console.log(`[OpenWA] Webhook registrado: ${webhookUrl}`);
+    return true;
+  } catch (err) {
+    console.error('[OpenWA] Error registrando webhook:', err.message);
+    return false;
+  }
+}
+
+function resetSessionId() {
+  activeSessionId = null;
+}
+
+module.exports = { sendMessage, checkConnection, syncChats, fetchChatHistory, resolveSessionId, ensureWebhook, resetSessionId };

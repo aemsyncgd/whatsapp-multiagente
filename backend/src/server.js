@@ -87,8 +87,10 @@ app.post('/webhook/message', async (req, res) => {
         emitToAll(io, 'openwa:connected', { connected: true });
         // Trigger sync when session becomes ready
         try {
-          const { syncChats, fetchChatHistory } = require('./services/openwa');
+          const { syncChats, fetchChatHistory, ensureWebhook, resetSessionId } = require('./services/openwa');
           const chatService = require('./services/chat');
+          resetSessionId();
+          await ensureWebhook();
           const result = await syncChats(chatService);
           console.log(`[Webhook] Sync post-conexión: ${result.synced} chats`);
         } catch (e) {
@@ -134,6 +136,11 @@ server.listen(config.port, '0.0.0.0', async () => {
       if (attempt < 5) setTimeout(() => autoSync(attempt + 1), 10000);
       return;
     }
+
+    // Ensure webhook is registered
+    const { ensureWebhook, resetSessionId } = require('./services/openwa');
+    resetSessionId();
+    await ensureWebhook();
 
     console.log('[Server] Sincronizando chats desde OpenWA...');
     const result = await syncChats(chatService);
