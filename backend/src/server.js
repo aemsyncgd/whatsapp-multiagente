@@ -85,6 +85,15 @@ app.post('/webhook/message', async (req, res) => {
       const status = payload.data?.status || '';
       if (status === 'ready' || status === 'connected') {
         emitToAll(io, 'openwa:connected', { connected: true });
+        // Trigger sync when session becomes ready
+        try {
+          const { syncChats, fetchChatHistory } = require('./services/openwa');
+          const chatService = require('./services/chat');
+          const result = await syncChats(chatService);
+          console.log(`[Webhook] Sync post-conexión: ${result.synced} chats`);
+        } catch (e) {
+          console.error('[Webhook] Error en sync post-conexión:', e.message);
+        }
       } else if (status === 'disconnected') {
         emitToAll(io, 'openwa:disconnected', { connected: false });
       }
@@ -114,14 +123,54 @@ server.listen(config.port, '0.0.0.0', async () => {
   console.log(`  Frontend: http://0.0.0.0:${config.port}`);
   console.log(`============================================\n`);
 
-  // Auto-sync chats from OpenWA
-  setTimeout(async () => {
-    const { syncChats } = require('./services/openwa');
+  // Auto-sync chats and messages from OpenWA (with retries)
+  async function autoSync(attempt = 1) {
+    const { syncChats, fetchChatHistory, checkConnection } = require('./services/openwa');
     const chatService = require('./services/chat');
+
+    const { connected } = await checkConnection();
+    if (!connected) {
+      console.log(`[Server] OpenWA no conectado (intento ${attempt}/5). Reintentando en 10s...`);
+      if (attempt < 5) setTimeout(() => autoSync(attempt + 1), 10000);
+      return;
+    }
+
     console.log('[Server] Sincronizando chats desde OpenWA...');
     const result = await syncChats(chatService);
     console.log(`[Server] Sincronización completada: ${result.synced} chats`);
-  }, 5000);
+
+    // Sync recent messages for each chat
+    const allChats = await chatService.getAllChats();
+    let totalMessages = 0;
+    for (const chat of allChats) {
+      try {
+        const messages = await fetchChatHistory(chat.whatsappId, 5);
+        if (!Array.isArray(messages) || messages.length === 0) continue;
+        for (const msg of messages) {
+          const contact = msg.contact || {};
+          const senderName = contact.name || contact.pushName || (msg.fromMe ? 'Tú' : 'Desconocido');
+          const body = msg.body || '';
+          const timestamp = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
+          await chatService.saveMessage({
+            chatId: chat.id,
+            senderWhatsappId: msg.author || msg.from || '',
+            senderName,
+            body,
+            messageType: msg.type || 'text',
+          });
+          totalMessages++;
+        }
+        const lastMsg = messages[0];
+        if (lastMsg?.body) {
+          await chatService.updateChatLastMessage(chat.id, lastMsg.body);
+        }
+      } catch (e) {
+        // skip individual chat errors
+      }
+    }
+    console.log(`[Server] Mensajes sincronizados: ${totalMessages}`);
+  }
+  setTimeout(() => autoSync(), 5000);
 });
 
 process.on('SIGTERM', async () => {

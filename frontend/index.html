@@ -14,13 +14,20 @@
     :root {
       --primary: #25d366;
       --primary-hover: #1da851;
-      --primary-light: #d1fae5;
       --bg-light: #f8fafc;
-      --bg-white: #ffffff;
+      --bg-white: #fff;
+      --bg-card: #fff;
       --text-primary: #0f172a;
       --text-secondary: #475569;
       --text-muted: #94a3b8;
       --border: #e2e8f0;
+      --error: #ef4444;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --shadow-sm: 0 1px 2px 0 #0000000d;
+      --shadow-md: 0 4px 6px -1px #0000001a, 0 2px 4px -2px #0000001a;
+      --shadow-lg: 0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a;
+      --radius: 10px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -31,25 +38,24 @@
     }
     #app { display: none; }
     #login { display: flex; }
-    .chat-list { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-    .chat-list::-webkit-scrollbar { width: 5px; }
-    .chat-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-    .messages-area { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-    .messages-area::-webkit-scrollbar { width: 5px; }
-    .messages-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    .scroll-thin::-webkit-scrollbar { width: 5px; }
+    .scroll-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius); }
     .message-agent {
-      background: var(--primary-light);
+      background: #d1fae5;
       border-radius: 12px 12px 4px 12px;
+      box-shadow: var(--shadow-sm);
     }
-    .message-technician {
-      background: #f1f5f9;
+    .message-received {
+      background: var(--bg-white);
       border-radius: 12px 12px 12px 4px;
+      box-shadow: var(--shadow-sm);
     }
-    .tab-btn { position: relative; }
-    .tab-btn:hover { background: #f8fafc; }
+    .tab-btn { position: relative; transition: all 0.15s ease; }
+    .tab-btn:hover { background: #f1f5f9; }
     .tab-active {
       background: #d1fae5 !important;
-      color: #16a34a !important;
+      color: #15803d !important;
     }
     .tab-active::after {
       content: '';
@@ -58,189 +64,187 @@
       top: 8px;
       bottom: 8px;
       width: 3px;
-      background: #25d366;
+      background: var(--primary);
       border-radius: 3px 0 0 3px;
     }
-    .chat-card { border-left: 3px solid transparent; }
+    .chat-card { border-left: 3px solid transparent; cursor: pointer; }
     .chat-card:hover { background: #f8fafc; }
     .chat-card-active {
       background: #d1fae5 !important;
-      border-left-color: #25d366 !important;
+      border-left-color: var(--primary) !important;
     }
-    .typing-indicator::after { content: '|'; animation: blink 1s infinite; }
-    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .animate-slide-in { animation: slideIn 0.2s ease; }
   </style>
 </head>
 <body>
 
 <div id="login" class="h-screen flex items-center justify-center" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
-  <div class="bg-white rounded-2xl p-8 w-full max-w-md" style="box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+  <div class="bg-white rounded-2xl p-8 w-full max-w-md shadow-lg">
     <div class="text-center mb-8">
-      <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-        <i class="fa-brands fa-whatsapp text-3xl text-green-500"></i>
+      <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style="background: #d1fae5;">
+        <i class="fa-brands fa-whatsapp text-3xl" style="color: var(--primary);"></i>
       </div>
-      <h1 class="text-2xl font-bold text-gray-900">Multiagente WhatsApp</h1>
-      <p class="text-sm mt-1 text-gray-500">Soporte técnico interno</p>
+      <h1 class="text-2xl font-bold" style="color: var(--text-primary);">Multiagente WhatsApp</h1>
+      <p class="text-sm mt-1" style="color: var(--text-muted);">Soporte técnico interno</p>
     </div>
     <form id="loginForm" class="space-y-4">
       <div>
-        <label class="block text-sm font-semibold text-gray-600 mb-1">Usuario</label>
-        <input type="text" id="username" required
-          class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-          placeholder="usuario">
+        <label class="block text-sm font-semibold mb-1" style="color: var(--text-secondary);">Usuario</label>
+        <input type="text" id="username" required class="w-full px-4 py-2.5 outline-none transition-colors" style="border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary);" placeholder="usuario">
       </div>
       <div>
-        <label class="block text-sm font-semibold text-gray-600 mb-1">Contraseña</label>
-        <input type="password" id="password" required
-          class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-          placeholder="••••••••">
+        <label class="block text-sm font-semibold mb-1" style="color: var(--text-secondary);">Contraseña</label>
+        <input type="password" id="password" required class="w-full px-4 py-2.5 outline-none transition-colors" style="border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary);" placeholder="••••••••">
       </div>
-      <button type="submit"
-        class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors">
+      <button type="submit" class="w-full text-white font-semibold py-2.5 px-4 transition-colors" style="background: var(--primary); border-radius: var(--radius);" onmouseover="this.style.background='var(--primary-hover)'" onmouseout="this.style.background='var(--primary)'">
         <i class="fa-solid fa-right-to-bracket mr-2"></i>Ingresar
       </button>
-      <p id="loginError" class="hidden text-sm text-center text-red-500"></p>
+      <p id="loginError" class="hidden text-sm text-center" style="color: var(--error);"></p>
     </form>
-    <div class="mt-4 p-3 rounded-lg text-xs bg-yellow-50 border border-yellow-200 text-yellow-700">
+    <div class="mt-4 p-3 rounded-lg text-xs" style="background: #fef3c7; border: 1px solid #fde68a; color: #d97706;">
       <i class="fa-solid fa-info-circle mr-1"></i>
       Operadores: carlos, maria, juan, ana — Contraseña: operador123
     </div>
   </div>
 </div>
 
-<div id="app" class="h-screen flex flex-col">
-  <div class="flex h-full">
-
-    <!-- Sidebar -->
-    <div class="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
-      <div class="px-4 py-4 border-b border-gray-200" style="min-height: 72px;">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold text-sm" id="userAvatar">C</div>
-            <div>
-              <p class="font-semibold text-sm text-gray-900" id="userDisplayName">Carlos</p>
-              <p class="text-xs text-green-500"><i class="fa-solid fa-circle text-[8px] mr-1"></i>En línea</p>
-            </div>
-          </div>
-          <button id="logoutBtn" class="text-gray-400 hover:text-red-500 transition-colors" title="Cerrar sesión">
-            <i class="fa-solid fa-right-from-bracket"></i>
-          </button>
-        </div>
-      </div>
-
-      <div class="px-4 py-3 border-b border-gray-200">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2 text-xs" id="openwaStatus">
-            <span class="w-2 h-2 rounded-full bg-gray-400"></span>
-            <span class="text-gray-400">Verificando conexión...</span>
-          </div>
-          <button id="syncBtn" class="text-gray-400 hover:text-green-600 transition-colors" title="Sincronizar chats">
-            <i class="fa-solid fa-rotate text-xs"></i>
-          </button>
-        </div>
-      </div>
-
-      <div class="px-4 py-3 border-b border-gray-200">
-        <div class="rounded-lg p-3 text-center bg-yellow-50 border border-yellow-200">
-          <p class="text-xs font-semibold text-yellow-700">
-            <i class="fa-solid fa-inbox mr-1"></i>Sin Asignar
-          </p>
-          <p class="text-2xl font-bold text-amber-500" id="unassignedCount">0</p>
-        </div>
-      </div>
-
-      <nav class="flex-1 py-2 px-3 space-y-0.5">
-        <button class="tab-btn tab-active w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg text-gray-600 hover:bg-gray-50" data-tab="my">
-          <i class="fa-solid fa-comments w-5 text-center text-green-500"></i>
-          <span>Mis Chats</span>
-        </button>
-        <button class="tab-btn w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg text-gray-600 hover:bg-gray-50" data-tab="unassigned">
-          <i class="fa-solid fa-inbox w-5 text-center text-amber-500"></i>
-          <span>Bandeja General</span>
-        </button>
-        <button class="tab-btn w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg text-gray-600 hover:bg-gray-50" data-tab="groups">
-          <i class="fa-solid fa-users w-5 text-center text-green-500"></i>
-          <span>Grupos de Soporte</span>
-        </button>
-        <button class="tab-btn w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg text-gray-600 hover:bg-gray-50" data-tab="all">
-          <i class="fa-solid fa-clock-rotate-left w-5 text-center text-gray-400"></i>
-          <span>Historial / Todos</span>
-        </button>
-      </nav>
-
-      <div class="p-3 border-t border-gray-200 text-xs text-gray-400 text-center">
-        Multiagente WhatsApp
-      </div>
-    </div>
-
-    <!-- Columna 2: Lista de Chats -->
-    <div class="w-80 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
-      <div class="px-4 py-3 border-b border-gray-200">
-        <h2 class="text-sm font-semibold text-gray-900" id="chatListTitle">Mis Chats</h2>
-      </div>
-      <div class="flex-1 overflow-y-auto chat-list" id="chatList">
-        <!-- Chats se renderizan acá -->
-      </div>
-    </div>
-
-    <!-- Columna 3: Chat -->
-    <div class="flex-1 flex flex-col bg-gray-50" id="chatWindow">
-      <div id="emptyState" class="flex-1 flex items-center justify-center">
-        <div class="text-center text-gray-400">
-          <div class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 bg-white border-2 border-dashed border-gray-300">
-            <i class="fa-regular fa-message text-3xl"></i>
-          </div>
-          <p class="text-lg font-medium text-gray-500">Selecciona un chat</p>
-          <p class="text-sm mt-1 text-gray-400">para comenzar a conversar</p>
-        </div>
-      </div>
-
-      <div id="activeChat" class="hidden flex-1 flex flex-col">
-        <div class="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
+<div id="app" class="h-screen flex overflow-hidden" style="background: var(--bg-light);">
+  <!-- Left: Sidebar -->
+  <aside class="w-64 flex-shrink-0 flex flex-col" style="background: var(--bg-white); border-right: 1px solid var(--border);">
+    <!-- User info -->
+    <div class="px-4 py-4" style="border-bottom: 1px solid var(--border); min-height: 72px;">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm" style="background: var(--primary);" id="userAvatar">C</div>
           <div>
-            <h3 class="font-semibold text-gray-900" id="activeChatName">—</h3>
-            <p class="text-xs mt-0.5 text-gray-500" id="activeChatMeta"></p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span id="chatAssignedBadge" class="hidden text-xs px-2 py-1 rounded-full bg-green-100 text-green-700"></span>
-            <button id="takeChatBtn" class="btn-primary hidden text-xs px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors">
-              <i class="fa-solid fa-hand-pointer mr-1"></i>Tomar Chat
-            </button>
-            <button id="releaseChatBtn" class="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors">
-              <i class="fa-solid fa-hand mr-1"></i>Liberar
-            </button>
+            <p class="font-semibold text-sm" id="userDisplayName" style="color: var(--text-primary);">Carlos</p>
+            <p class="text-xs" style="color: var(--primary);"><i class="fa-solid fa-circle text-[8px] mr-1"></i>En línea</p>
           </div>
         </div>
-        <div class="flex-1 overflow-y-auto messages-area p-4 space-y-3" id="messagesContainer">
-          <!-- Mensajes -->
-        </div>
-        <div class="p-3 border-t border-gray-200 bg-white">
-          <div class="flex gap-2">
-            <input type="text" id="messageInput" autocomplete="off"
-              class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-              placeholder="Escribe un mensaje...">
-            <button id="sendBtn" class="px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors">
-              <i class="fa-solid fa-paper-plane"></i>
-            </button>
-          </div>
-        </div>
+        <button id="logoutBtn" class="transition-colors" style="color: var(--text-muted);" title="Cerrar sesión">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
       </div>
     </div>
 
+    <!-- Connection & Sync -->
+    <div class="px-4 py-3" style="border-bottom: 1px solid var(--border);">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2 text-xs" id="openwaStatus">
+          <span class="w-2 h-2 rounded-full" style="background: var(--text-muted);"></span>
+          <span style="color: var(--text-muted);">Verificando conexión...</span>
+        </div>
+        <button id="syncBtn" class="transition-colors" style="color: var(--text-muted);" title="Sincronizar chats">
+          <i class="fa-solid fa-rotate text-xs"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Unassigned counter -->
+    <div class="px-4 py-3" style="border-bottom: 1px solid var(--border);">
+      <div class="rounded-lg p-3 text-center" style="background: #fef3c7; border: 1px solid #fde68a;">
+        <p class="text-xs font-semibold" style="color: #d97706;">
+          <i class="fa-solid fa-inbox mr-1"></i>Sin Asignar
+        </p>
+        <p class="text-2xl font-bold" style="color: var(--warning);" id="unassignedCount">0</p>
+      </div>
+    </div>
+
+    <!-- Nav tabs -->
+    <nav class="flex-1 py-2 px-3 space-y-0.5 overflow-y-auto scroll-thin">
+      <button class="tab-btn tab-active w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg" style="color: var(--text-secondary);" data-tab="my">
+        <i class="fa-solid fa-comments w-5 text-center" style="color: var(--primary);"></i>
+        <span>Mis Chats</span>
+      </button>
+      <button class="tab-btn w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg" style="color: var(--text-secondary);" data-tab="unassigned">
+        <i class="fa-solid fa-inbox w-5 text-center" style="color: var(--warning);"></i>
+        <span>Bandeja General</span>
+      </button>
+      <button class="tab-btn w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg" style="color: var(--text-secondary);" data-tab="groups">
+        <i class="fa-solid fa-users w-5 text-center" style="color: var(--primary);"></i>
+        <span>Grupos de Soporte</span>
+      </button>
+      <button class="tab-btn w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-lg" style="color: var(--text-secondary);" data-tab="all">
+        <i class="fa-solid fa-clock-rotate-left w-5 text-center" style="color: var(--text-muted);"></i>
+        <span>Historial / Todos</span>
+      </button>
+    </nav>
+
+    <div class="p-3 text-xs text-center" style="border-top: 1px solid var(--border); color: var(--text-muted);">
+      Multiagente WhatsApp
+    </div>
+  </aside>
+
+  <!-- Center: Chat List -->
+  <div class="w-80 flex-shrink-0 flex flex-col" style="background: var(--bg-white); border-right: 1px solid var(--border);">
+    <div class="px-4 py-3" style="border-bottom: 1px solid var(--border);">
+      <h2 class="text-sm font-semibold" id="chatListTitle" style="color: var(--text-primary);">Mis Chats</h2>
+    </div>
+    <div class="flex-1 overflow-y-auto scroll-thin" id="chatList"></div>
+  </div>
+
+  <!-- Right: Chat Area -->
+  <div class="flex-1 flex flex-col min-w-0" id="chatWindow" style="background: var(--bg-light);">
+    <!-- Empty state -->
+    <div id="emptyState" class="flex-1 flex items-center justify-center">
+      <div class="text-center">
+        <div class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" style="background: var(--bg-white); border: 2px dashed var(--border);">
+          <i class="fa-regular fa-message text-3xl" style="color: var(--text-muted);"></i>
+        </div>
+        <p class="text-lg font-medium" style="color: var(--text-secondary);">Selecciona un chat</p>
+        <p class="text-sm mt-1" style="color: var(--text-muted);">para comenzar a conversar</p>
+      </div>
+    </div>
+
+    <!-- Active chat -->
+    <div id="activeChat" class="hidden flex-1 flex flex-col min-h-0">
+      <!-- Chat header (fixed) -->
+      <div class="px-4 py-3 flex items-center justify-between flex-shrink-0" style="background: var(--bg-white); border-bottom: 1px solid var(--border);">
+        <div class="min-w-0">
+          <h3 class="font-semibold truncate" id="activeChatName" style="color: var(--text-primary);">—</h3>
+          <p class="text-xs mt-0.5 truncate" id="activeChatMeta" style="color: var(--text-muted);"></p>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+          <span id="chatAssignedBadge" class="hidden text-xs px-2 py-1 rounded-full font-medium" style="background: #d1fae5; color: #15803d;"></span>
+          <button id="takeChatBtn" class="hidden text-xs px-3 py-1.5 text-white rounded-lg transition-colors" style="background: var(--primary); border-radius: var(--radius);">
+            <i class="fa-solid fa-hand-pointer mr-1"></i>Tomar Chat
+          </button>
+          <button id="releaseChatBtn" class="text-xs px-3 py-1.5 rounded-lg transition-colors" style="border: 1px solid var(--border); color: var(--text-secondary); border-radius: var(--radius);">
+            <i class="fa-solid fa-hand mr-1"></i>Liberar
+          </button>
+        </div>
+      </div>
+
+      <!-- Messages (scrollable, fills remaining height) -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-3 scroll-thin" id="messagesContainer" style="min-height: 0;">
+      </div>
+
+      <!-- Input (fixed at bottom) -->
+      <div class="p-3 flex-shrink-0" style="background: var(--bg-white); border-top: 1px solid var(--border);">
+        <div class="flex gap-2">
+          <input type="text" id="messageInput" autocomplete="off" class="flex-1 px-4 py-2.5 outline-none transition-colors" style="border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary);" placeholder="Escribe un mensaje...">
+          <button id="sendBtn" class="px-4 py-2.5 text-white rounded-lg transition-colors" style="background: var(--primary); border-radius: var(--radius);">
+            <i class="fa-solid fa-paper-plane"></i>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- Modal QR -->
-<div id="qrModal" class="hidden fixed inset-0 flex items-center justify-center z-50 bg-black/50" style="backdrop-filter: blur(4px);">
-  <div class="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl">
-    <h3 class="text-lg font-bold text-gray-900 mb-2">Escanea el código QR</h3>
-    <p class="text-sm text-gray-500 mb-4">Abre WhatsApp en tu teléfono y escanea para conectar</p>
-    <div id="qrContainer" class="bg-white p-4 rounded-xl border-2 border-dashed border-gray-300 inline-block">
-      <div class="w-64 h-64 flex items-center justify-center text-gray-300">
+<!-- QR Modal -->
+<div id="qrModal" class="hidden fixed inset-0 flex items-center justify-center z-50" style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+  <div class="rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-lg" style="background: var(--bg-white);">
+    <h3 class="text-lg font-bold mb-2" style="color: var(--text-primary);">Escanea el código QR</h3>
+    <p class="text-sm mb-4" style="color: var(--text-muted);">Abre WhatsApp en tu teléfono y escanea para conectar</p>
+    <div class="p-4 rounded-xl inline-block" style="border: 2px dashed var(--border);">
+      <div class="w-64 h-64 flex items-center justify-center" style="color: var(--border);">
         <i class="fa-solid fa-qrcode text-8xl"></i>
       </div>
     </div>
-    <button id="closeQrBtn" class="mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors">Cerrar</button>
+    <button id="closeQrBtn" class="mt-4 text-sm transition-colors" style="color: var(--text-muted);">Cerrar</button>
   </div>
 </div>
 

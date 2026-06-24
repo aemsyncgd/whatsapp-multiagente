@@ -10,10 +10,37 @@ const api = axios.create({
   },
 });
 
+let activeSessionId = null;
+
+async function resolveSessionId() {
+  if (activeSessionId) return activeSessionId;
+  try {
+    const res = await api.get('/api/sessions');
+    const sessions = res.data;
+    if (Array.isArray(sessions)) {
+      const ready = sessions.find(s => s.status === 'ready' || s.status === 'connected');
+      if (ready) {
+        activeSessionId = ready.id;
+        return activeSessionId;
+      }
+    }
+  } catch (err) {
+    console.error('[OpenWA] Error descubriendo sesión:', err.message);
+  }
+  // fallback al env var
+  if (config.openwa.sessionId) {
+    activeSessionId = config.openwa.sessionId;
+    return activeSessionId;
+  }
+  return null;
+}
+
 async function fetchChatHistory(chatId, limit = 50) {
+  const sid = await resolveSessionId();
+  if (!sid) return [];
   try {
     const encodedChatId = encodeURIComponent(chatId);
-    const response = await api.get(`/api/sessions/${config.openwa.sessionId}/messages/${encodedChatId}/history?limit=${limit}`);
+    const response = await api.get(`/api/sessions/${sid}/messages/${encodedChatId}/history?limit=${limit}`);
     return response.data;
   } catch (err) {
     console.error(`[OpenWA] Error obteniendo historial de ${chatId}:`, err.message);
@@ -22,8 +49,10 @@ async function fetchChatHistory(chatId, limit = 50) {
 }
 
 async function sendMessage(to, body) {
+  const sid = await resolveSessionId();
+  if (!sid) throw new Error('No hay sesión activa de WhatsApp');
   try {
-    const response = await api.post(`/api/sessions/${config.openwa.sessionId}/messages/send-text`, {
+    const response = await api.post(`/api/sessions/${sid}/messages/send-text`, {
       chatId: to,
       text: body,
     });
@@ -36,8 +65,13 @@ async function sendMessage(to, body) {
 }
 
 async function syncChats(chatService) {
+  const sid = await resolveSessionId();
+  if (!sid) {
+    console.log('[OpenWA] No hay sesión activa para sincronizar chats');
+    return { synced: 0 };
+  }
   try {
-    const res = await api.get(`/api/sessions/${config.openwa.sessionId}/chats`);
+    const res = await api.get(`/api/sessions/${sid}/chats`);
     const chats = res.data;
     if (!Array.isArray(chats)) {
       console.log('[OpenWA] No se pudieron obtener chats (formato inesperado)');
@@ -63,23 +97,29 @@ async function syncChats(chatService) {
 
 async function checkConnection() {
   try {
-    // Verificar salud del API y estado de la sesión
     const health = await api.get('/api/health/ready');
     if (health.data?.status !== 'ok') return { connected: false };
 
     const sessions = await api.get('/api/sessions');
-    const session = sessions.data?.find(s => s.id === config.openwa.sessionId);
+    let session = null;
+    if (config.openwa.sessionId) {
+      session = sessions.data?.find(s => s.id === config.openwa.sessionId);
+    }
+    if (!session || session.status !== 'ready') {
+      // find any ready session
+      session = sessions.data?.find(s => s.status === 'ready' || s.status === 'connected');
+    }
     const connected = session?.status === 'connected' || session?.status === 'ready';
 
     if (!connected) {
-      console.log(`[OpenWA] Sesión "${config.openwa.sessionId}" estado: ${session?.status || 'desconocido'}`);
+      console.log(`[OpenWA] Sin sesión activa. Sesiones encontradas: ${(sessions.data || []).map(s => `${s.id.substring(0,8)}...:${s.status}`).join(', ') || 'ninguna'}`);
     }
 
-    return { connected, status: session?.status };
+    return { connected, status: session?.status, sessionId: session?.id };
   } catch (err) {
     console.error('[OpenWA] Error de conexión:', err.message);
     return { connected: false };
   }
 }
 
-module.exports = { sendMessage, checkConnection, syncChats, fetchChatHistory };
+module.exports = { sendMessage, checkConnection, syncChats, fetchChatHistory, resolveSessionId };

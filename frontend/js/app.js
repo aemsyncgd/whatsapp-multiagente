@@ -146,9 +146,9 @@ async function checkOpenWaStatus() {
 function updateOpenWaStatusUI() {
   const el = document.getElementById('openwaStatus');
   if (state.openwaConnected) {
-    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span><span class="text-green-600 text-xs">WhatsApp Conectado</span>';
+    el.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:var(--success);display:inline-block;"></span><span style="font-size:0.75rem;color:var(--success);">WhatsApp Conectado</span>';
   } else {
-    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span><span class="text-red-500 text-xs">WhatsApp Desconectado</span>';
+    el.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:var(--error);display:inline-block;animation:pulse 2s infinite;"></span><span style="font-size:0.75rem;color:var(--error);">WhatsApp Desconectado</span>';
   }
 }
 
@@ -303,26 +303,30 @@ function renderMessages(messages) {
 
     if (isAgent) {
       return `
-        <div class="message-agent" style="padding:0.75rem;max-width:80%;margin-left:auto;">
-          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
-            <span style="font-size:0.75rem;font-weight:700;color:var(--primary);">
-              <i class="fa-solid fa-headset mr-1"></i>${escapeHtml(agentName)}
-            </span>
-            <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
+        <div class="animate-slide-in" style="padding:0.75rem;max-width:80%;margin-left:auto;">
+          <div class="message-agent" style="padding:0.75rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
+              <span style="font-size:0.75rem;font-weight:700;color:var(--primary);">
+                <i class="fa-solid fa-headset mr-1"></i>${escapeHtml(agentName)}
+              </span>
+              <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
+            </div>
+            <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
           </div>
-          <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
         </div>`;
     }
 
     return `
-      <div class="message-technician" style="padding:0.75rem;max-width:80%;">
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
-          <span style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);">
-            <i class="fa-brands fa-whatsapp mr-1" style="color:var(--primary);"></i>${escapeHtml(msg.senderName || 'Técnico')}
-          </span>
-          <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
+      <div class="animate-slide-in" style="padding:0.75rem;max-width:80%;">
+        <div class="message-received" style="padding:0.75rem;">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
+            <span style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);">
+              <i class="fa-brands fa-whatsapp mr-1" style="color:var(--primary);"></i>${escapeHtml(msg.senderName || 'Desconocido')}
+            </span>
+            <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
+          </div>
+          <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
         </div>
-        <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
       </div>`;
   }).join('');
 

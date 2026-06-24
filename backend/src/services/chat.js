@@ -126,6 +126,13 @@ async function getUnassignedCount() {
   });
 }
 
+async function getAllChats() {
+  return prisma.chat.findMany({
+    include: { assignedToUser: { select: { id: true, displayName: true } } },
+    orderBy: { lastMessageAt: 'desc' },
+  });
+}
+
 module.exports = {
   upsertChat,
   createOrUpdateChat,
@@ -138,4 +145,5 @@ module.exports = {
   getChatMessages,
   getChatById,
   getUnassignedCount,
+  getAllChats,
 };
