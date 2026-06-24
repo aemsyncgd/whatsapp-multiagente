@@ -132,7 +132,7 @@ services:
       - PORT=5000
       - OPENWA_API_URL=http://openwa-api:2785
       - OPENWA_TOKEN=owa_master_key_cambiar_en_produccion
-      - OPENWA_SESSION_ID=385ccc4f-1314-4971-b00a-b18344977e47
+      - OPENWA_SESSION_ID=e3c87c44-a6d8-4054-bb33-77d780773aff
       - JWT_SECRET=cambiar_esto_por_un_secreto_seguro_en_produccion
       - DATABASE_URL=file:./data/dev.db
       - NODE_ENV=production

@@ -3,7 +3,7 @@ const config = require('../config');
 
 const api = axios.create({
   baseURL: config.openwa.apiUrl,
-  timeout: 15000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'X-API-Key': config.openwa.token,
@@ -45,14 +45,24 @@ async function resolveSessionId() {
 async function fetchChatHistory(chatId, limit = 50) {
   const sid = await resolveSessionId();
   if (!sid) return [];
-  try {
-    const encodedChatId = encodeURIComponent(chatId);
-    const response = await api.get(`/api/sessions/${sid}/messages/${encodedChatId}/history?limit=${limit}`);
-    return response.data;
-  } catch (err) {
-    console.error(`[OpenWA] Error obteniendo historial de ${chatId}:`, err.message);
-    return [];
+  const maxRetries = 4;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const encodedChatId = encodeURIComponent(chatId);
+      const response = await api.get(`/api/sessions/${sid}/messages/${encodedChatId}/history?limit=${limit}`);
+      return response.data;
+    } catch (err) {
+      if (err.response?.status === 429 && attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+        console.log(`[OpenWA] Rate limited (429) en ${chatId}, reintento ${attempt+1}/${maxRetries} en ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      console.error(`[OpenWA] Error obteniendo historial de ${chatId}:`, err.message);
+      return [];
+    }
   }
+  return [];
 }
 
 async function sendMessage(to, body) {
@@ -89,8 +99,7 @@ async function syncChats(chatService) {
       const id = chat.id || '';
       const name = chat.name || chat.id || 'Chat';
       const isGroup = id.endsWith('@g.us');
-      const isLid = id.endsWith('@lid');
-      if (isLid) continue; // skip privacy IDs
+      if (id.endsWith('@lid') || id.endsWith('@newsletter') || id.endsWith('@broadcast')) continue;
       await chatService.createOrUpdateChat(id, name, isGroup ? 'group' : 'direct');
     }
 

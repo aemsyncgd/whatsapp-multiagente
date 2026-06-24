@@ -44,9 +44,10 @@ app.post('/webhook/message', async (req, res) => {
       const msg = payload.data || payload;
       const chatId = msg.chatId || msg.from || '';
       const contact = msg.contact || {};
-      const senderName = contact.name || contact.pushName || 'Desconocido';
+      const senderName = contact.name || contact.pushName || (msg.fromMe ? 'Tú' : 'Desconocido');
       const body = msg.body || msg.message || msg.caption || '';
       const isGroup = chatId.includes('@g.us');
+      const senderJid = msg.author || msg.from || '';
 
       const chat = await chatService.upsertChat(
         chatId,
@@ -54,9 +55,19 @@ app.post('/webhook/message', async (req, res) => {
         isGroup ? 'group' : 'direct'
       );
 
+      // If we have a real contact name, retroactively update unknown names in DB
+      if (senderName && senderName !== 'Desconocido' && senderJid) {
+        try {
+          await prisma.message.updateMany({
+            where: { senderWhatsappId: senderJid, senderName: 'Desconocido' },
+            data: { senderName },
+          });
+        } catch {}
+      }
+
       const savedMessage = await chatService.saveMessage({
         chatId: chat.id,
-        senderWhatsappId: msg.author || msg.from || '',
+        senderWhatsappId: senderJid,
         senderName,
         body,
         isFromAgent: false,
@@ -67,7 +78,7 @@ app.post('/webhook/message', async (req, res) => {
 
       const unassignedCount = await chatService.getUnassignedCount();
 
-      emitToAll(io, 'message:new', savedMessage);
+      emitToAll(io, 'message:received', savedMessage);
       emitToAll(io, 'chat:updated', {
         ...chat,
         lastMessage: body,
@@ -155,12 +166,20 @@ server.listen(config.port, '0.0.0.0', async () => {
         if (!Array.isArray(messages) || messages.length === 0) continue;
         for (const msg of messages) {
           const contact = msg.contact || {};
-          const senderName = contact.name || contact.pushName || (msg.fromMe ? 'Tú' : 'Desconocido');
+          const authorJid = msg.author || msg.from || '';
+          let senderName = contact.name || contact.pushName || '';
+          if (!senderName) {
+            if (msg.fromMe) {
+              senderName = 'Tú';
+            } else {
+              const match = authorJid.match(/^(\d+)@/);
+              senderName = match ? (match[1].length > 8 ? '...' + match[1].slice(-4) : match[1]) : 'Desconocido';
+            }
+          }
           const body = msg.body || '';
-          const timestamp = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
           await chatService.saveMessage({
             chatId: chat.id,
-            senderWhatsappId: msg.author || msg.from || '',
+            senderWhatsappId: authorJid,
             senderName,
             body,
             messageType: msg.type || 'text',

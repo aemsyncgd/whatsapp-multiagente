@@ -27,7 +27,7 @@ function connect(token) {
     console.error('[Socket] Error de conexión:', err.message);
   });
 
-  socket.on('message:new', (message) => {
+  socket.on('message:received', (message) => {
     emit('message:received', message);
   });
 

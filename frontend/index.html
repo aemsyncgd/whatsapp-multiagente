@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,8 +15,8 @@
       --primary: #25d366;
       --primary-hover: #1da851;
       --bg-light: #f8fafc;
-      --bg-white: #fff;
-      --bg-card: #fff;
+      --bg-white: #ffffff;
+      --bg-card: #ffffff;
       --text-primary: #0f172a;
       --text-secondary: #475569;
       --text-muted: #94a3b8;
@@ -28,6 +28,36 @@
       --shadow-md: 0 4px 6px -1px #0000001a, 0 2px 4px -2px #0000001a;
       --shadow-lg: 0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a;
       --radius: 10px;
+      --msg-outgoing: #d9fdd3;
+      --msg-outgoing-border: #c6f6c0;
+      --msg-incoming: #ffffff;
+      --msg-incoming-border: var(--border);
+      --badge-free-bg: #fef3c7;
+      --badge-free-text: #d97706;
+      --badge-mine-bg: #e8f5e9;
+      --badge-mine-text: #2e7d32;
+      --badge-other-bg: #f1f5f9;
+    }
+    [data-theme="dark"] {
+      --bg-light: #0f172a;
+      --bg-white: #1e293b;
+      --bg-card: #1e293b;
+      --text-primary: #f1f5f9;
+      --text-secondary: #cbd5e1;
+      --text-muted: #64748b;
+      --border: #334155;
+      --shadow-sm: 0 1px 2px 0 #0000004d;
+      --shadow-md: 0 4px 6px -1px #0000004d, 0 2px 4px -2px #0000004d;
+      --shadow-lg: 0 10px 15px -3px #00000066, 0 4px 6px -4px #00000066;
+      --msg-outgoing: #005c4b;
+      --msg-outgoing-border: #005c4b;
+      --msg-incoming: #1e293b;
+      --msg-incoming-border: #334155;
+      --badge-free-bg: #78350f;
+      --badge-free-text: #fcd34d;
+      --badge-mine-bg: #064e3b;
+      --badge-mine-text: #6ee7b7;
+      --badge-other-bg: #334155;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -35,6 +65,10 @@
       background: var(--bg-light);
       color: var(--text-primary);
       -webkit-font-smoothing: antialiased;
+      transition: background 0.2s, color 0.2s;
+    }
+    input, button, textarea, select {
+      font-family: inherit;
     }
     #app { display: none; }
     #login { display: flex; }
@@ -42,20 +76,22 @@
     .scroll-thin::-webkit-scrollbar { width: 5px; }
     .scroll-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius); }
     .message-agent {
-      background: #d1fae5;
+      background: var(--msg-outgoing);
+      border: 1px solid var(--msg-outgoing-border);
       border-radius: 12px 12px 4px 12px;
       box-shadow: var(--shadow-sm);
     }
     .message-received {
-      background: var(--bg-white);
+      background: var(--msg-incoming);
+      border: 1px solid var(--msg-incoming-border);
       border-radius: 12px 12px 12px 4px;
       box-shadow: var(--shadow-sm);
     }
     .tab-btn { position: relative; transition: all 0.15s ease; }
-    .tab-btn:hover { background: #f1f5f9; }
+    .tab-btn:hover { background: var(--border); }
     .tab-active {
-      background: #d1fae5 !important;
-      color: #15803d !important;
+      background: var(--msg-outgoing) !important;
+      color: var(--badge-mine-text) !important;
     }
     .tab-active::after {
       content: '';
@@ -67,23 +103,36 @@
       background: var(--primary);
       border-radius: 3px 0 0 3px;
     }
-    .chat-card { border-left: 3px solid transparent; cursor: pointer; }
-    .chat-card:hover { background: #f8fafc; }
+    .chat-card {
+      border-left: 3px solid transparent;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .chat-card:hover { background: var(--bg-light); }
     .chat-card-active {
-      background: #d1fae5 !important;
+      background: var(--msg-outgoing) !important;
       border-left-color: var(--primary) !important;
     }
     @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     .animate-slide-in { animation: slideIn 0.2s ease; }
+    .animate-spin { animation: spin 1s linear infinite; }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary) !important;
+      box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.15);
+    }
+    .transition-theme { transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s; }
   </style>
 </head>
 <body>
 
 <div id="login" class="h-screen flex items-center justify-center" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
-  <div class="bg-white rounded-2xl p-8 w-full max-w-md shadow-lg">
+  <div class="rounded-2xl p-8 w-full max-w-md shadow-lg" style="background: var(--bg-card);">
     <div class="text-center mb-8">
-      <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style="background: #d1fae5;">
+      <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style="background: var(--msg-outgoing);">
         <i class="fa-brands fa-whatsapp text-3xl" style="color: var(--primary);"></i>
       </div>
       <h1 class="text-2xl font-bold" style="color: var(--text-primary);">Multiagente WhatsApp</h1>
@@ -103,7 +152,7 @@
       </button>
       <p id="loginError" class="hidden text-sm text-center" style="color: var(--error);"></p>
     </form>
-    <div class="mt-4 p-3 rounded-lg text-xs" style="background: #fef3c7; border: 1px solid #fde68a; color: #d97706;">
+    <div class="mt-4 p-3 rounded-lg text-xs" style="background: var(--badge-free-bg); border: 1px solid var(--badge-free-text); color: var(--badge-free-text);">
       <i class="fa-solid fa-info-circle mr-1"></i>
       Operadores: carlos, maria, juan, ana — Contraseña: operador123
     </div>
@@ -144,11 +193,11 @@
 
     <!-- Unassigned counter -->
     <div class="px-4 py-3" style="border-bottom: 1px solid var(--border);">
-      <div class="rounded-lg p-3 text-center" style="background: #fef3c7; border: 1px solid #fde68a;">
-        <p class="text-xs font-semibold" style="color: #d97706;">
+      <div class="rounded-lg p-3 text-center" style="background: var(--badge-free-bg); border: 1px solid var(--badge-free-text);">
+        <p class="text-xs font-semibold" style="color: var(--badge-free-text);">
           <i class="fa-solid fa-inbox mr-1"></i>Sin Asignar
         </p>
-        <p class="text-2xl font-bold" style="color: var(--warning);" id="unassignedCount">0</p>
+        <p class="text-2xl font-bold" style="color: var(--badge-free-text);" id="unassignedCount">0</p>
       </div>
     </div>
 
@@ -172,7 +221,13 @@
       </button>
     </nav>
 
-    <div class="p-3 text-xs text-center" style="border-top: 1px solid var(--border); color: var(--text-muted);">
+    <div class="px-3 py-2" style="border-top: 1px solid var(--border);">
+      <button id="themeToggle" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors" style="color: var(--text-secondary);">
+        <i id="themeIcon" class="fa-solid fa-moon w-5 text-center"></i>
+        <span id="themeLabel">Modo Oscuro</span>
+      </button>
+    </div>
+    <div class="p-3 text-xs text-center" style="color: var(--text-muted);">
       Multiagente WhatsApp
     </div>
   </aside>
@@ -207,7 +262,7 @@
           <p class="text-xs mt-0.5 truncate" id="activeChatMeta" style="color: var(--text-muted);"></p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0 ml-3">
-          <span id="chatAssignedBadge" class="hidden text-xs px-2 py-1 rounded-full font-medium" style="background: #d1fae5; color: #15803d;"></span>
+          <span id="chatAssignedBadge" class="hidden text-xs px-2 py-1 rounded-full font-medium" style="background: var(--badge-mine-bg); color: var(--badge-mine-text);"></span>
           <button id="takeChatBtn" class="hidden text-xs px-3 py-1.5 text-white rounded-lg transition-colors" style="background: var(--primary); border-radius: var(--radius);">
             <i class="fa-solid fa-hand-pointer mr-1"></i>Tomar Chat
           </button>

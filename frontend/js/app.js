@@ -4,9 +4,32 @@ import { connect, disconnect, showToast } from './socket.js';
 
 let chatListPolling = null;
 
+// Theme management
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if (theme === 'dark') {
+    icon.className = 'fa-solid fa-moon w-5 text-center';
+    label.textContent = 'Modo Oscuro';
+  } else {
+    icon.className = 'fa-solid fa-sun w-5 text-center';
+    label.textContent = 'Modo Claro';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', init);
 
 function init() {
+  // Theme: default dark, restore saved
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  applyTheme(savedTheme);
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  });
+
   const token = localStorage.getItem('token');
   if (token) {
     setState({ token });
@@ -176,16 +199,16 @@ function renderChatList(chats, tab) {
 
     let badge = '';
     if (chat.type === 'group') {
-      badge = '<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:#e8f5e9;color:#2e7d32;">Grupo</span>';
+      badge = '<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:var(--badge-mine-bg);color:var(--badge-mine-text);">Grupo</span>';
     } else if (assignedName) {
-      const bg = isMine ? '#e8f5e9' : '#f1f5f9';
-      const color = isMine ? '#2e7d32' : 'var(--text-secondary)';
+      const bg = isMine ? 'var(--badge-mine-bg)' : 'var(--badge-other-bg)';
+      const color = isMine ? 'var(--badge-mine-text)' : 'var(--text-secondary)';
       badge = `<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:${bg};color:${color};">${isMine ? 'Tuyo' : escapeHtml(assignedName)}</span>`;
     } else {
-      badge = '<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:#fef3c7;color:#d97706;">Libre</span>';
+      badge = '<span style="font-size:0.75rem;padding:0.125rem 0.5rem;border-radius:999px;font-weight:600;background:var(--badge-free-bg);color:var(--badge-free-text);">Libre</span>';
     }
 
-    const avatarBg = chat.type === 'group' ? 'var(--primary)' : (assignedName ? 'var(--primary)' : '#d97706');
+    const avatarBg = chat.type === 'group' ? 'var(--primary)' : (assignedName ? 'var(--primary)' : 'var(--badge-free-text)');
 
     return `
       <div class="chat-card" style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;${isActive ? 'background:var(--primary-light);border-left-color:var(--primary);' : ''}"
@@ -265,14 +288,9 @@ async function openChat(chatId, chatType) {
   }
 
   try {
-    let messages = await fetchMessages(chatId);
-    // If no messages (new chat), try syncing from OpenWA history
-    if (messages.length === 0) {
-      const result = await syncChatMessages(chatId);
-      if (result.synced > 0) {
-        messages = await fetchMessages(chatId);
-      }
-    }
+    // Always sync latest messages from OpenWA when opening a chat
+    await syncChatMessages(chatId);
+    const messages = await fetchMessages(chatId);
     setState({ messages });
     renderMessages(messages);
   } catch {
@@ -396,7 +414,15 @@ function bindSendMessage() {
     sendBtn.disabled = true;
 
     try {
-      await sendMessage(chatId, body);
+      const sent = await sendMessage(chatId, body);
+      // Add message to local state immediately (socket will also add it, dedup by id)
+      if (sent && sent.id) {
+        const exists = state.messages.some(m => m.id === sent.id);
+        if (!exists) {
+          state.messages.push(sent);
+          renderMessages(state.messages);
+        }
+      }
       loadTab(state.currentTab, true);
     } catch (err) {
       showToast('Error al enviar: ' + err.message, 'error');

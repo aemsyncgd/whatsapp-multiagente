@@ -7,7 +7,7 @@ Stack funcionando con 3 contenedores en podman-compose:
 - `openwa-dashboard` (OpenWA dashboard, puerto 2886)
 - `whatsapp-backend` (backend Node.js + frontend SPA, puerto 5000)
 
-WhatsApp conectado, sesión `fd940466-59cb-4547-8b7b-0439074d4397`, número `584129520171`.
+WhatsApp conectado, sesión `e3c87c44-a6d8-4054-bb33-77d780773aff` (número `584129520171`).
 
 ## Funcionalidades operativas
 
@@ -21,7 +21,8 @@ WhatsApp conectado, sesión `fd940466-59cb-4547-8b7b-0439074d4397`, número `584
 - Retry de sincronización al iniciar (hasta 5 intentos si OpenWA no está listo).
 - Interfaz rediseñada con paleta de colores personalizada (verde WhatsApp #25d366).
 - Layout con panel de mensajes de altura fija (scroll interno, botones siempre visibles).
-- Sincronización de mensajes de grupo al abrir un chat sin mensajes locales.
+- Sincronización de mensajes de grupo al abrir un chat (siempre, no solo cuando está vacío).
+- Nombre de remitente mejorado: muestra últimos 4 dígitos del JID en vez de "Desconocido".
 
 ## Cambios realizados
 
@@ -30,10 +31,12 @@ WhatsApp conectado, sesión `fd940466-59cb-4547-8b7b-0439074d4397`, número `584
 - Fallback al `OPENWA_SESSION_ID` del env si no hay sesión activa.
 - Todas las funciones (`fetchChatHistory`, `sendMessage`, `syncChats`, `checkConnection`) usan `resolveSessionId()`.
 - `checkConnection()` busca cualquier sesión `ready`/`connected` si la hardcodeada no funciona.
+- `fetchChatHistory()` con exponential backoff (4 reintentos, delay 1s→2s→4s→8s) para 429.
 
 ### server.js
 - `autoSync()` con retry (5 intentos, 10s de espera) para sincronizar chats/mensajes al iniciar.
 - Webhook `session.status = ready` también dispara `syncChats()`.
+- Webhook handler actualiza retroactivamente nombres de contactos "Desconocido" cuando recibe un mensaje con nombre real.
 
 ### chat.js
 - Nueva función `getAllChats()` exportada.
@@ -47,22 +50,31 @@ WhatsApp conectado, sesión `fd940466-59cb-4547-8b7b-0439074d4397`, número `584
 ### app.js
 - Actualizado `renderMessages()` con clases CSS personalizadas.
 - `updateOpenWaStatusUI()` usa variables CSS en vez de Tailwind.
+- Toggle de tema (oscuro/claro) con persistencia en localStorage.
+
+### index.html
+- Modo oscuro por defecto con `data-theme="dark"`.
+- Botón de cambio de tema (luna/sol) en la sidebar.
+- Variables CSS para burbujas (`--msg-outgoing`, `--msg-incoming`), badges (`--badge-*`) que se adaptan al tema.
+- Animación pulse para estado desconectado.
+- Focus ring verde en inputs.
+- Transiciones suaves en cambios de tema.
 
 ## Pendientes para mañana
 
-### 1. Nombres de contactos en grupos
-Al sincronizar mensajes históricos, algunos contactos aparecen como "Desconocido" porque OpenWA no tiene `contact.pushName` para todos. Revisar si se puede resolver el nombre a partir del JID vía la API de OpenWA.
+### 1. Caché de nombres de contacto
+OpenWA no proporciona `contact.pushName` en respuestas del history API. Aunque el webhook tiene contacto real, el sync histórico muestra últimos 4 dígitos del JID. Considerar endpoint `/contacts/{jid}` de OpenWA para resolver nombres durante sync.
 
-### 2. Scroll al último mensaje
-Ya se hace con `requestAnimationFrame` → `scrollTop = scrollHeight`. Probar si funciona correctamente al abrir un grupo con muchos mensajes.
+### 2. Send a WhatsApp
+El endpoint `POST /chats/:id/send` guarda el mensaje localmente e intenta enviar a OpenWA. Verificar que `sendMessage()` funciona correctamente (puede fallar silenciosamente).
 
-### 3. Rate limiting (429)
-OpenWA devuelve 429 Too Many Requests al sincronizar muchos chats seguidos. Evaluar si es necesario añadir un delay entre peticiones.
-
-### 4. Producción
+### 3. Producción
 - Mover `API_MASTER_KEY`, `OPENWA_TOKEN` y `JWT_SECRET` a variables de entorno.
 - Mover contraseñas de operadores desde `seed.js` a variables de entorno.
 - Evaluar si `QUEUE_ENABLED=false` puede causar pérdida de webhooks bajo carga.
 
-### 5. Sesión QR en frontend
-El modal QR está en el HTML pero no se ha visto el flujo completo de reconexión desde el frontend multiusuario. Probar y pulir si es necesario.
+### 4. Restart de OpenWA
+Después de reiniciar el contenedor, la sesión queda `disconnected`. El backend reintenta pero necesita detectar cambio de estado vía webhook `session.status = ready`. A veces el webhook no se dispara automáticamente.
+
+### 5. Caché de nombres de contacto
+OpenWA no proporciona `contact.pushName` en respuestas del history API. Aunque el webhook tiene contacto real, el sync histórico muestra últimos 4 dígitos del JID. Considerar endpoint `/contacts/{jid}` de OpenWA para resolver nombres durante sync.

@@ -173,7 +173,7 @@ router.post('/chats/:id/send', verifyToken, async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      io.emit('message:new', message);
+      io.emit('message:received', message);
     }
 
     try {
@@ -222,7 +222,23 @@ router.post('/chats/:id/sync-messages', verifyToken, async (req, res) => {
     for (const msg of messages) {
       try {
         const contact = msg.contact || {};
-        const senderName = contact.name || contact.pushName || (msg.fromMe ? 'Tú' : 'Desconocido');
+        const authorJid = msg.author || msg.from || '';
+        let senderName = contact.name || contact.pushName || '';
+        if (!senderName) {
+          if (msg.fromMe) {
+            senderName = 'Tú';
+          } else {
+            // Try to extract a readable identifier from the JID
+            const match = authorJid.match(/^(\d+)@/);
+            if (match) {
+              const num = match[1];
+              // Show last digits for phone numbers
+              senderName = num.length > 8 ? '...' + num.slice(-4) : num;
+            } else {
+              senderName = 'Desconocido';
+            }
+          }
+        }
         const body = msg.body || '';
         const timestamp = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
 
@@ -235,7 +251,7 @@ router.post('/chats/:id/sync-messages', verifyToken, async (req, res) => {
         await prisma.message.create({
           data: {
             chatId,
-            senderWhatsappId: msg.author || msg.from || '',
+            senderWhatsappId: authorJid,
             senderName,
             body,
             timestamp,
