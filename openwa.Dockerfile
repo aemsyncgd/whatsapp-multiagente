@@ -32,6 +32,10 @@ COPY --from=builder /app/dist ./dist
 # Patch @IsUrl to allow hostnames without TLD (e.g. "backend")
 RUN sed -i 's/(0, class_validator_1.IsUrl)()/(0, class_validator_1.IsUrl)({ require_tld: false })/g' /app/dist/modules/webhook/dto/webhook.dto.js
 
+# Patch sendAudioMessage to pass sendAudioAsVoice=true (WhatsApp voice note format)
+COPY patch_openwa_adapter.sh /tmp/patch_openwa_adapter.sh
+RUN chmod +x /tmp/patch_openwa_adapter.sh && /tmp/patch_openwa_adapter.sh && rm /tmp/patch_openwa_adapter.sh
+
 RUN mkdir -p ./data/sessions ./data/media && chown -R openwa:openwa /app
 
 ENV HOME=/app/data

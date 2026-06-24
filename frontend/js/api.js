@@ -56,6 +56,10 @@ async function sendMessage(chatId, body) {
   return request('POST', `/chats/${chatId}/send`, { body });
 }
 
+async function sendAudio(chatId, base64, mimetype) {
+  return request('POST', `/chats/${chatId}/send-audio`, { base64, mimetype });
+}
+
 async function fetchUnassignedCount() {
   return request('GET', '/unassigned-count');
 }
@@ -72,12 +76,17 @@ async function syncChatMessages(chatId) {
   return request('POST', `/chats/${chatId}/sync-messages`);
 }
 
+async function syncAllMessages(limit = 100) {
+  return request('POST', `/chats/sync-messages-all?limit=${limit}`);
+}
+
 export {
   login, logout,
   fetchChats, fetchMessages,
   assignChat, releaseChat, resolveChat,
-  sendMessage,
+  sendMessage, sendAudio,
   fetchUnassignedCount, fetchOpenWaStatus,
   syncChats,
   syncChatMessages,
+  syncAllMessages,
 };

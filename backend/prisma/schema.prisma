@@ -43,11 +43,15 @@ model Message {
   chatId           Int
   senderWhatsappId String   @default("")
   senderName       String   @default("")
-  body             String
+  body             String   @default("")
   timestamp        DateTime @default(now())
   agentId          Int?
   messageType      String   @default("text")
   isFromAgent      Boolean  @default(false)
+  mediaUrl         String?
+  mediaMimeType    String?
+  mediaFilename    String?
+  mediaSize        Int?
 
   chat   Chat  @relation(fields: [chatId], references: [id])
   agent  User? @relation(fields: [agentId], references: [id])

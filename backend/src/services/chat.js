@@ -27,16 +27,20 @@ async function createOrUpdateChat(whatsappId, name, type) {
   });
 }
 
-async function saveMessage({ chatId, senderWhatsappId, senderName, body, agentId, isFromAgent, messageType }) {
+async function saveMessage({ chatId, senderWhatsappId, senderName, body, agentId, isFromAgent, messageType, mediaUrl, mediaMimeType, mediaFilename, mediaSize }) {
   return prisma.message.create({
     data: {
       chatId,
       senderWhatsappId: senderWhatsappId || '',
       senderName: senderName || '',
-      body,
+      body: body || '',
       agentId: agentId || null,
       isFromAgent: isFromAgent || false,
       messageType: messageType || 'text',
+      mediaUrl: mediaUrl || null,
+      mediaMimeType: mediaMimeType || null,
+      mediaFilename: mediaFilename || null,
+      mediaSize: mediaSize || null,
     },
     include: { agent: { select: { id: true, displayName: true, username: true } } },
   });

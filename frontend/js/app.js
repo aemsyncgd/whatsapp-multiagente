@@ -1,5 +1,5 @@
 import { state, on, emit, setState } from './store.js';
-import { login, logout, fetchChats, fetchMessages, assignChat, releaseChat, sendMessage, fetchUnassignedCount, fetchOpenWaStatus, syncChats, syncChatMessages } from './api.js';
+import { login, logout, fetchChats, fetchMessages, assignChat, releaseChat, sendMessage, sendAudio, fetchUnassignedCount, fetchOpenWaStatus, syncChats, syncChatMessages, syncAllMessages } from './api.js';
 import { connect, disconnect, showToast } from './socket.js';
 
 let chatListPolling = null;
@@ -115,10 +115,22 @@ async function doSyncChats(silent = true) {
   try {
     const result = await syncChats();
     if (!silent) showToast(`Sincronizados ${result.synced} chats`, 'success');
-    loadTab(state.currentTab);
+    // Switch to 'unassigned' tab so newly synced chats are visible
+    switchTab('unassigned');
     return result;
   } catch (err) {
     if (!silent) showToast('Error al sincronizar: ' + err.message, 'error');
+  }
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+  const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (btn) {
+    btn.classList.add('tab-active');
+    setState({ currentTab: tab });
+    document.getElementById('chatListTitle').textContent = btn.querySelector('span').textContent;
+    loadTab(tab);
   }
 }
 
@@ -318,6 +330,7 @@ function renderMessages(messages) {
     const agentName = msg.agent?.displayName || '';
     const time = formatTime(msg.timestamp);
     const date = formatDate(msg.timestamp);
+    const bodyContent = renderMessageBody(msg);
 
     if (isAgent) {
       return `
@@ -329,7 +342,7 @@ function renderMessages(messages) {
               </span>
               <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
             </div>
-            <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
+            ${bodyContent}
           </div>
         </div>`;
     }
@@ -343,7 +356,7 @@ function renderMessages(messages) {
             </span>
             <span style="font-size:0.625rem;color:var(--text-muted);">${date} ${time}</span>
           </div>
-          <p style="font-size:0.875rem;color:var(--text-primary);">${escapeHtml(msg.body)}</p>
+          ${bodyContent}
         </div>
       </div>`;
   }).join('');
@@ -351,6 +364,68 @@ function renderMessages(messages) {
   requestAnimationFrame(() => {
     container.scrollTop = container.scrollHeight;
   });
+}
+
+function baseMimeType(mime) {
+  if (!mime) return '';
+  return mime.split(';')[0].trim();
+}
+
+function renderMessageBody(msg) {
+  const type = msg.messageType || 'text';
+  const body = escapeHtml(msg.body || '');
+  const rawMime = msg.mediaMimeType || '';
+  const baseMime = baseMimeType(rawMime);
+  const url = msg.mediaUrl || '';
+
+  switch (type) {
+    case 'image':
+      if (url && baseMime.startsWith('image/')) {
+        return `<img src="data:${baseMime};base64,${url}" style="max-width:100%;border-radius:8px;display:block;margin-bottom:0.25rem;" loading="lazy" />${body ? `<p style="font-size:0.875rem;color:var(--text-primary);margin-top:0.25rem;">${body}</p>` : ''}`;
+      }
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">📷 Foto${body ? `: ${body}` : ''}</p>`;
+
+    case 'video':
+      if (url && baseMime.startsWith('video/')) {
+        return `<video controls style="max-width:100%;border-radius:8px;display:block;" preload="metadata"><source src="data:${baseMime};base64,${url}" type="${rawMime || baseMime}" /></video>${body ? `<p style="font-size:0.875rem;color:var(--text-primary);margin-top:0.25rem;">${body}</p>` : ''}`;
+      }
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">🎥 Video${body ? `: ${body}` : ''}</p>`;
+
+    case 'audio':
+    case 'voice':
+      if (url) {
+        const audioType = type === 'voice' ? '🎤 Nota de voz' : '🎵 Audio';
+        const effectiveMime = baseMime || 'audio/ogg';
+        const fallbackId = `audio-fb-${Date.now()}`;
+        return `<audio controls style="width:100%;" preload="none" onerror="document.getElementById('${fallbackId}').style.display='block';this.style.display='none'"><source src="data:${effectiveMime};base64,${url}" type="${rawMime || effectiveMime}" /></audio><p id="${fallbackId}" style="display:none;font-size:0.8125rem;color:var(--text-muted);padding:0.5rem;background:var(--bg-light);border-radius:8px;">${audioType} <span style="font-size:0.75rem;opacity:0.7;">(no disponible en este navegador)</span></p><p style="font-size:0.75rem;color:var(--text-muted);margin-top:0.125rem;">${audioType}</p>`;
+      }
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">${type === 'voice' ? '🎤' : '🎵'} ${type === 'voice' ? 'Nota de voz' : 'Audio'}${body ? `: ${body}` : ''}</p>`;
+
+    case 'document':
+      if (url) {
+        const filename = escapeHtml(msg.mediaFilename || 'documento');
+        return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem;background:var(--bg-light);border-radius:8px;"><i class="fa-solid fa-file" style="color:var(--primary);font-size:1.25rem;"></i><div style="flex:1;min-width:0;"><p style="font-size:0.8125rem;color:var(--text-primary);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${filename}</p><p style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(baseMime || rawMime || 'Documento')}</p></div></div>`;
+      }
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">📄 Documento${body ? `: ${body}` : ''}</p>`;
+
+    case 'sticker':
+      if (url && baseMime.startsWith('image/')) {
+        return `<img src="data:${baseMime};base64,${url}" style="max-width:160px;border-radius:8px;display:block;" loading="lazy" />`;
+      }
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">🖼️ Sticker</p>`;
+
+    case 'location':
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">📍 ${body || 'Ubicación'}</p>`;
+
+    case 'contact':
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">👤 Contacto: ${body || 'Compartido'}</p>`;
+
+    case 'revoked':
+      return `<p style="font-size:0.8125rem;color:var(--text-muted);font-style:italic;">🚫 Mensaje eliminado</p>`;
+
+    default:
+      return `<p style="font-size:0.875rem;color:var(--text-primary);">${body}</p>`;
+  }
 }
 
 function highlightActiveChat(chatId) {
@@ -403,6 +478,23 @@ function bindChatActions() {
 function bindSendMessage() {
   const input = document.getElementById('messageInput');
   const sendBtn = document.getElementById('sendBtn');
+  const audioBtn = document.getElementById('audioBtn');
+  const attachBtn = document.getElementById('attachBtn');
+
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let isRecording = false;
+
+  function autoResize() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  }
+
+  function updateButtons() {
+    const hasText = input.value.trim().length > 0;
+    audioBtn.classList.toggle('hidden', hasText);
+    sendBtn.classList.toggle('hidden', !hasText);
+  }
 
   async function doSend() {
     const chatId = state.activeChatId;
@@ -410,12 +502,13 @@ function bindSendMessage() {
     if (!chatId || !body) return;
 
     input.value = '';
+    autoResize();
+    updateButtons();
     input.disabled = true;
     sendBtn.disabled = true;
 
     try {
       const sent = await sendMessage(chatId, body);
-      // Add message to local state immediately (socket will also add it, dedup by id)
       if (sent && sent.id) {
         const exists = state.messages.some(m => m.id === sent.id);
         if (!exists) {
@@ -433,18 +526,126 @@ function bindSendMessage() {
     }
   }
 
+  async function startRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast('Grabación de audio no soportada en este navegador', 'error');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm' });
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+        if (blob.size === 0) return;
+        await sendAudioMessage(blob);
+      };
+      mediaRecorder.start();
+      isRecording = true;
+      audioBtn.innerHTML = '<i class="fa-solid fa-stop text-lg" style="color:var(--error);"></i>';
+      audioBtn.title = 'Detener grabación';
+      showToast('Grabando...', 'success');
+    } catch (err) {
+      showToast('Error al acceder al micrófono: ' + err.message, 'error');
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    isRecording = false;
+    audioBtn.innerHTML = '<i class="fa-solid fa-microphone text-lg"></i>';
+    audioBtn.title = 'Grabar nota de voz';
+  }
+
+  async function sendAudioMessage(blob) {
+    const chatId = state.activeChatId;
+    if (!chatId) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result.split(',')[1];
+      audioBtn.disabled = true;
+      try {
+        const sent = await sendAudio(chatId, base64, blob.type);
+        if (sent && sent.id) {
+          const exists = state.messages.some(m => m.id === sent.id);
+          if (!exists) {
+            state.messages.push(sent);
+            renderMessages(state.messages);
+          }
+        }
+        loadTab(state.currentTab, true);
+        showToast('🎤 Nota de voz enviada', 'success');
+      } catch (err) {
+        showToast('Error al enviar audio: ' + err.message, 'error');
+      } finally {
+        audioBtn.disabled = false;
+      }
+    };
+    reader.readAsDataURL(blob);
+  }
+
+  input.addEventListener('input', () => {
+    autoResize();
+    updateButtons();
+  });
+
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter') {
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+Enter: insert new line
+        const start = input.selectionStart;
+        input.value = input.value.substring(0, start) + '\n' + input.value.substring(input.selectionEnd);
+        input.selectionStart = input.selectionEnd = start + 1;
+        autoResize();
+        return;
+      }
+      // Enter alone: send
       e.preventDefault();
       doSend();
     }
   });
+
   sendBtn.addEventListener('click', doSend);
+
+  audioBtn.addEventListener('click', () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  });
+
+  attachBtn.addEventListener('click', () => {
+    showToast('Adjuntar archivos próximamente', 'info');
+  });
 }
 
 function bindSyncButton() {
   document.getElementById('syncBtn').addEventListener('click', () => {
     doSyncChats(false);
+  });
+
+  document.getElementById('syncAllBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('syncAllBtn');
+    btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin text-xs"></i>';
+    btn.style.pointerEvents = 'none';
+    try {
+      const result = await syncAllMessages(100);
+      showToast(`Sincronizados ${result.synced} mensajes de ${result.chatsProcessed} chats`, 'success');
+      loadTab(state.currentTab);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down text-xs"></i>';
+      btn.style.pointerEvents = 'auto';
+    }
   });
 }
 

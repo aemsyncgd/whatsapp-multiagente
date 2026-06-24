@@ -1,4 +1,7 @@
 const axios = require('axios');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const config = require('../config');
 
 const api = axios.create({
@@ -81,6 +84,53 @@ async function sendMessage(to, body) {
   }
 }
 
+async function convertAudioToAac(base64Data) {
+  const tmpDir = '/tmp';
+  const inputPath = path.join(tmpDir, `input_${Date.now()}.webm`);
+  const outputPath = path.join(tmpDir, `output_${Date.now()}.m4a`);
+  try {
+    fs.writeFileSync(inputPath, Buffer.from(base64Data, 'base64'));
+    execSync(
+      `ffmpeg -y -i "${inputPath}" -c:a aac -b:a 64k -ar 24000 -ac 1 "${outputPath}" 2>/dev/null`,
+      { timeout: 30000 }
+    );
+    const buf = fs.readFileSync(outputPath);
+    return { base64: buf.toString('base64'), size: buf.length };
+  } catch (err) {
+    console.error('[Audio] Error en conversión ffmpeg:', err.message);
+    return null;
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+}
+
+async function sendAudioMessage(to, base64, mimetype) {
+  const sid = await resolveSessionId();
+  if (!sid) throw new Error('No hay sesión activa de WhatsApp');
+  try {
+    // Convert WebM Opus → AAC/MP4 so WhatsApp receives a playable audio
+    // message (not BIN). Use audio/mp4 mimetype which does NOT trigger
+    // WA Web's broken audio transcoder (unlike audio/ogg, audio/wav).
+    const converted = await convertAudioToAac(base64);
+    const payloadBase64 = converted ? converted.base64 : base64;
+    if (!converted) {
+      console.warn('[OpenWA] Fallback a datos originales (sin conversión)');
+    }
+
+    const response = await api.post(`/api/sessions/${sid}/messages/send-audio`, {
+      chatId: to,
+      base64: payloadBase64,
+      mimetype: 'audio/mp4',
+    });
+    return response.data;
+  } catch (err) {
+    const detail = err.response?.data || err.message;
+    console.error(`[OpenWA] Error enviando audio a ${to}:`, JSON.stringify(detail));
+    throw new Error(`Error al enviar audio: ${JSON.stringify(detail)}`);
+  }
+}
+
 async function syncChats(chatService) {
   const sid = await resolveSessionId();
   if (!sid) {
@@ -99,7 +149,7 @@ async function syncChats(chatService) {
       const id = chat.id || '';
       const name = chat.name || chat.id || 'Chat';
       const isGroup = id.endsWith('@g.us');
-      if (id.endsWith('@lid') || id.endsWith('@newsletter') || id.endsWith('@broadcast')) continue;
+      if (id === '0@c.us' || id.endsWith('@newsletter') || id.endsWith('@broadcast')) continue;
       await chatService.createOrUpdateChat(id, name, isGroup ? 'group' : 'direct');
     }
 
@@ -158,4 +208,4 @@ function resetSessionId() {
   activeSessionId = null;
 }
 
-module.exports = { sendMessage, checkConnection, syncChats, fetchChatHistory, resolveSessionId, ensureWebhook, resetSessionId };
+module.exports = { sendMessage, sendAudioMessage, checkConnection, syncChats, fetchChatHistory, resolveSessionId, ensureWebhook, resetSessionId };

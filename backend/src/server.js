@@ -19,6 +19,7 @@ const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
   pingInterval: 10000,
   pingTimeout: 5000,
+  maxHttpBufferSize: 5e6,
 });
 
 app.set('io', io);
@@ -35,6 +36,22 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
+function renderMediaPreview(type, caption) {
+  const icons = {
+    image: '📷 Foto',
+    video: '🎥 Video',
+    audio: '🎵 Audio',
+    voice: '🎤 Nota de voz',
+    document: '📄 Documento',
+    sticker: '🖼️ Sticker',
+    location: '📍 Ubicación',
+    contact: '👤 Contacto',
+    revoked: '🚫 Mensaje eliminado',
+  };
+  const prefix = icons[type] || `📎 ${type}`;
+  return caption ? `${prefix}: ${caption}` : prefix;
+}
+
 app.post('/webhook/message', async (req, res) => {
   try {
     const payload = req.body;
@@ -42,10 +59,17 @@ app.post('/webhook/message', async (req, res) => {
 
     if (event === 'message.received' || event === 'onMessage') {
       const msg = payload.data || payload;
-      const chatId = msg.chatId || msg.from || '';
+      if (!msg.chatId && !msg.from) return res.json({ ok: true });
+
+      const rawChatId = msg.chatId || msg.from || '';
+      // Skip ghost/system chats
+      if (rawChatId === '0@c.us' || rawChatId.endsWith('@broadcast') || rawChatId.endsWith('@newsletter')) return res.json({ ok: true });
+
+      const chatId = rawChatId;
       const contact = msg.contact || {};
       const senderName = contact.name || contact.pushName || (msg.fromMe ? 'Tú' : 'Desconocido');
       const body = msg.body || msg.message || msg.caption || '';
+      const msgType = msg.type || 'text';
       const isGroup = chatId.includes('@g.us');
       const senderJid = msg.author || msg.from || '';
 
@@ -65,23 +89,36 @@ app.post('/webhook/message', async (req, res) => {
         } catch {}
       }
 
+      // Media handling
+      const media = msg.media || {};
+      const mediaData = media.data ? {
+        mediaUrl: media.data,
+        mediaMimeType: media.mimetype || null,
+        mediaFilename: media.filename || null,
+        mediaSize: media.filesize ? parseInt(media.filesize) : null,
+      } : {};
+
       const savedMessage = await chatService.saveMessage({
         chatId: chat.id,
         senderWhatsappId: senderJid,
         senderName,
         body,
         isFromAgent: false,
-        messageType: 'text',
+        messageType: msgType,
+        ...mediaData,
       });
 
-      await chatService.updateChatLastMessage(chat.id, body);
+      // Build display text for last message
+      const displayText = msgType === 'text' ? body : renderMediaPreview(msgType, body);
+
+      await chatService.updateChatLastMessage(chat.id, displayText);
 
       const unassignedCount = await chatService.getUnassignedCount();
 
       emitToAll(io, 'message:received', savedMessage);
       emitToAll(io, 'chat:updated', {
         ...chat,
-        lastMessage: body,
+        lastMessage: displayText,
         lastMessageAt: new Date().toISOString(),
         messages: [{ body }],
       });
@@ -177,18 +214,30 @@ server.listen(config.port, '0.0.0.0', async () => {
             }
           }
           const body = msg.body || '';
+          const msgType = msg.type || 'text';
+          const media = msg.media || {};
+          const mediaData = media.data ? {
+            mediaUrl: media.data,
+            mediaMimeType: media.mimetype || null,
+            mediaFilename: media.filename || null,
+            mediaSize: media.filesize ? parseInt(media.filesize) : null,
+          } : {};
           await chatService.saveMessage({
             chatId: chat.id,
             senderWhatsappId: authorJid,
             senderName,
             body,
-            messageType: msg.type || 'text',
+            messageType: msgType,
+            ...mediaData,
           });
           totalMessages++;
         }
         const lastMsg = messages[0];
-        if (lastMsg?.body) {
-          await chatService.updateChatLastMessage(chat.id, lastMsg.body);
+        if (lastMsg) {
+          const lastBody = lastMsg.body || '';
+          const lastType = lastMsg.type || 'text';
+          const displayText = lastType === 'text' ? lastBody : renderMediaPreview(lastType, lastBody);
+          if (displayText) await chatService.updateChatLastMessage(chat.id, displayText);
         }
       } catch (e) {
         // skip individual chat errors

@@ -185,9 +185,14 @@
           <span class="w-2 h-2 rounded-full" style="background: var(--text-muted);"></span>
           <span style="color: var(--text-muted);">Verificando conexión...</span>
         </div>
-        <button id="syncBtn" class="transition-colors" style="color: var(--text-muted);" title="Sincronizar chats">
-          <i class="fa-solid fa-rotate text-xs"></i>
-        </button>
+        <div class="flex items-center gap-1">
+          <button id="syncAllBtn" class="transition-colors" style="color: var(--text-muted);" title="Sincronizar todos los mensajes">
+            <i class="fa-solid fa-cloud-arrow-down text-xs"></i>
+          </button>
+          <button id="syncBtn" class="transition-colors" style="color: var(--text-muted);" title="Sincronizar lista de chats">
+            <i class="fa-solid fa-rotate text-xs"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -278,10 +283,18 @@
 
       <!-- Input (fixed at bottom) -->
       <div class="p-3 flex-shrink-0" style="background: var(--bg-white); border-top: 1px solid var(--border);">
-        <div class="flex gap-2">
-          <input type="text" id="messageInput" autocomplete="off" class="flex-1 px-4 py-2.5 outline-none transition-colors" style="border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary);" placeholder="Escribe un mensaje...">
-          <button id="sendBtn" class="px-4 py-2.5 text-white rounded-lg transition-colors" style="background: var(--primary); border-radius: var(--radius);">
-            <i class="fa-solid fa-paper-plane"></i>
+        <div class="flex items-end gap-2">
+          <button id="attachBtn" class="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors" style="color: var(--text-muted);" title="Adjuntar archivo">
+            <i class="fa-solid fa-plus text-lg"></i>
+          </button>
+          <div class="flex-1 relative" style="border: 1px solid var(--border); border-radius: 18px; background: var(--bg-light);">
+            <textarea id="messageInput" rows="1" autocomplete="off" class="block w-full px-3 py-2 outline-none resize-none transition-colors" style="border: none; background: transparent; color: var(--text-primary); max-height: 120px; font-size: 0.9375rem; line-height: 1.4;" placeholder="Escribe un mensaje..."></textarea>
+          </div>
+          <button id="audioBtn" class="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors" style="color: var(--text-muted);" title="Grabar nota de voz">
+            <i class="fa-solid fa-microphone text-lg"></i>
+          </button>
+          <button id="sendBtn" class="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors hidden" style="color: var(--primary);">
+            <i class="fa-solid fa-paper-plane text-lg"></i>
           </button>
         </div>
       </div>
